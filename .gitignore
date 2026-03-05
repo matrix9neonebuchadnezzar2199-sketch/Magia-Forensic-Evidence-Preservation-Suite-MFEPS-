@@ -1,0 +1,40 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+*.egg
+
+# 仮想環境
+venv/
+.venv/
+runtime/
+
+# 環境変数
+.env
+
+# データ・ログ (ポータブル実行時に生成)
+data/
+logs/
+output/
+reports/
+backup/
+
+# DLL (ユーザー個別配置)
+libs/*.dll
+libs/*.exe
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+Thumbs.db
+desktop.ini
+.DS_Store
+
+# NiceGUI
+.nicegui/

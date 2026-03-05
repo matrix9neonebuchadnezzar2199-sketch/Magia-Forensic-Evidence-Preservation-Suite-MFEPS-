@@ -1,0 +1,13 @@
+# MFEPS v2.0 Dependencies
+nicegui>=3.0.0
+sqlalchemy>=2.0
+aiofiles>=23.0
+python-dotenv>=1.0
+pydantic>=2.0
+pydantic-settings>=2.0
+psutil>=5.9
+reportlab>=4.0
+Jinja2>=3.1
+rfc3161ng>=2.1.3
+wmi>=1.5.1
+pywin32>=306
