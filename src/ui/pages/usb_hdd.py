@@ -8,9 +8,10 @@ import uuid
 from src.core.device_detector import detect_block_devices, DeviceInfo, format_capacity
 from src.core.write_blocker import check_write_protection, get_protection_badge
 from src.ui.components.progress_panel import (
-    render_progress_panel, render_hash_comparison, render_error_panel
+    render_progress_panel, render_hash_comparison, render_error_panel, render_hash_display
 )
 from src.ui.layout import create_layout
+from src.services.imaging_service import get_imaging_service
 
 
 def build_usb_hdd_page():
@@ -82,7 +83,37 @@ def build_usb_hdd_page():
 
             with ui.stepper_navigation():
                 ui.button("← 戻る", on_click=stepper.previous).props("flat")
-                ui.button("▶️ コピー開始 →", on_click=lambda: stepper.next(),
+                
+                async def start_copy():
+                    if not state["selected_device"]:
+                        ui.notify("デバイスが選択されていません", type="negative")
+                        return
+                    if not state["case_number"] or not state["evidence_number"]:
+                        ui.notify("案件番号と証拠品番号を入力してください", type="warning")
+                        return
+
+                    service = get_imaging_service()
+                    job_id = await service.start_imaging(
+                        device=state["selected_device"],
+                        case_id=state["case_number"],
+                        evidence_id=state["evidence_number"],
+                        verify=state.get("verify", True),
+                    )
+                    state["job_id"] = job_id
+                    
+                    # STEP 3 の初期化
+                    progress_container.clear()
+                    log_area.clear()
+                    log_area.push(f"[{job_id}] イメージングジョブを開始しました...")
+                    
+                    # 定期更新タイマー起動
+                    if "timer" in state and state["timer"]:
+                        state["timer"].deactivate()
+                    state["timer"] = ui.timer(1.0, update_progress)
+                    
+                    stepper.next()
+
+                ui.button("▶️ コピー開始 →", on_click=start_copy,
                          color="primary").props("unelevated")
 
         # ===== STEP 3: コピー実行 =====
@@ -92,19 +123,84 @@ def build_usb_hdd_page():
             progress_container = ui.column().classes("full-width")
             log_area = ui.log(max_lines=100).classes("full-width q-mt-md").style("height: 200px;")
 
+            async def cancel_job():
+                if state.get("job_id"):
+                    await get_imaging_service().cancel_imaging(state["job_id"])
+                    log_area.push("⚠️ ジョブをキャンセルしました")
+                    ui.notify("コピーを中止しました", type="warning")
+
             with ui.row().classes("gap-2 q-mt-md"):
                 ui.button("⏸ 一時停止", icon="pause").props("outline")
-                ui.button("⏹ 中止", icon="stop", color="negative").props("outline")
+                ui.button("⏹ 中止", on_click=cancel_job, icon="stop", color="negative").props("outline")
 
             with ui.stepper_navigation():
-                ui.button("結果を確認 →", on_click=stepper.next,
+                btn_next = ui.button("結果を確認 →", on_click=stepper.next,
                          color="primary").props("unelevated")
+                btn_next.disable() # コピー完了まで無効化
+
+            async def update_progress():
+                if not state.get("job_id"):
+                    return
+                
+                service = get_imaging_service()
+                progress = service.get_progress(state["job_id"])
+                status = progress.get("status", "unknown")
+                
+                progress_container.clear()
+                with progress_container:
+                    render_progress_panel(progress)
+                    if "source_hashes" in progress:
+                        render_hash_display(progress["source_hashes"])
+                
+                # ログの追加
+                if "current_file" in progress and progress["current_file"]:
+                    log_area.push(f"書き込み中: {progress['current_file']}")
+
+                if status in ["completed", "failed", "cancelled"]:
+                    if "timer" in state and state["timer"]:
+                        state["timer"].deactivate()
+                        state["timer"] = None
+                    btn_next.enable()
+                    state["result"] = progress
+                    
+                    if status == "completed":
+                        log_area.push("✅ イメージングが正常に完了しました")
+                        ui.notify("コピーが完了しました", type="positive")
+                    else:
+                        log_area.push(f"❌ イメージング終了: {status}")
+                        ui.notify(f"コピーが終了しました ({status})", type="negative")
+                        
+                    # リザルト画面の生成
+                    build_result_page()
 
         # ===== STEP 4: リザルト =====
         with ui.step("リザルト", icon="check_circle"):
             ui.label("✅ コピー完了").classes("text-h6 q-mb-md")
 
             result_container = ui.column().classes("full-width")
+
+            def build_result_page():
+                result_container.clear()
+                res = state.get("result", {})
+                
+                with result_container:
+                    if res.get("status") == "completed":
+                        ui.label("イメージングプロセスの結果レポート").classes("text-body1 q-mb-md")
+                        
+                        # ハッシュ比較
+                        src_hashes = res.get("source_hashes", {})
+                        ver_hashes = res.get("verify_hashes", {})
+                        if src_hashes and ver_hashes:
+                            render_hash_comparison(src_hashes, ver_hashes, res.get("match_result", "failed"))
+                        elif src_hashes:
+                            render_hash_display(src_hashes, "ソースハッシュ (検証スキップ)")
+                            
+                        # エラーセクタ
+                        if res.get("error_count", 0) > 0:
+                            # 実際のエラーリストを渡す
+                            render_error_panel([]) 
+                    else:
+                        ui.label(f"ジョブが正常に完了しませんでした ({res.get('status', 'unknown')})").classes("text-body1 text-negative")
 
             ui.label("結果はイメージングジョブ実行後に表示されます").classes(
                 "text-caption text-grey-6")
