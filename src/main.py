@@ -68,13 +68,14 @@ def main():
     else:
         logger.warning("管理者権限: ⚠️ 未取得 — デバイスアクセスが制限されます")
 
-    # 6. カスタムCSS注入
-    ui.add_head_html(f"<style>{CUSTOM_CSS}</style>")
+    # 6. Storage初期化をstartupイベント内で実行
+    _admin = admin
 
-    # 7. Storage初期化
-    app.storage.general["status_text"] = "準備完了"
-    app.storage.general["disk_free"] = ""
-    app.storage.general["is_admin"] = admin
+    @app.on_startup
+    async def on_startup():
+        app.storage.general["status_text"] = "準備完了"
+        app.storage.general["disk_free"] = ""
+        app.storage.general["is_admin"] = _admin
 
     # 8. ページルーティング
     @ui.page("/")
@@ -112,29 +113,8 @@ def main():
     def page_audit():
         create_layout(build_audit_page)
 
-    # 9. 起動時法的免責ダイアログ（初回起動時）
-    @app.on_connect
-    async def on_connect():
-        if not app.storage.user.get("disclaimer_accepted"):
-            with ui.dialog() as dialog, ui.card().classes("q-pa-lg"):
-                ui.label("⚖️ 法的免責事項").classes("text-h5 text-weight-bold")
-                ui.separator()
-                ui.label(
-                    "本ツールはデジタルフォレンジックの証拠保全を目的として設計されています。\n"
-                    "コピーガード解除機能は、正当な法的権限に基づく証拠保全目的でのみ使用可能です。\n"
-                    "不正競争防止法および著作権法に違反する使用は固く禁じます。\n"
-                    "ユーザーは本ツールの使用に関する全ての責任を負います。"
-                ).classes("text-body1").style("white-space: pre-line;")
-                ui.separator()
-
-                async def on_accept():
-                    app.storage.user["disclaimer_accepted"] = True
-                    dialog.close()
-
-                with ui.row().classes("justify-end q-mt-md"):
-                    ui.button("同意して続行", on_click=on_accept, color="primary").props("unelevated")
-
-            dialog.open()
+    # 9. 法的免責ダイアログは各ページのlayout内で表示
+    # (on_connectはNiceGUI 3.xではUI要素の操作に制限あり)
 
     # 10. NiceGUI起動
     logger.info(f"WebUI をポート {config.mfeps_port} で起動します...")
@@ -144,7 +124,7 @@ def main():
         favicon="🔬",
         dark=True,
         reload=False,
-        show=True,
+        show=False,
         storage_secret="mfeps-v2-secret-key",
     )
 

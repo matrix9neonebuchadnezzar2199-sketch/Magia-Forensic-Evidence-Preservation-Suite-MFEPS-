@@ -110,7 +110,7 @@ def build_settings():
 
         with ui.row().classes("items-center gap-4"):
             ui.label("DB ファイル:").classes("text-body2")
-            ui.input(value="./data/mfeps.db", readonly=True).classes("flex-grow")
+            ui.input(value="./data/mfeps.db").props("readonly").classes("flex-grow")
 
         async def on_reset_db():
             with ui.dialog() as confirm_dialog, ui.card():

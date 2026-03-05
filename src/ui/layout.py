@@ -4,6 +4,7 @@ MFEPS v2.0 — メインレイアウト
 """
 from nicegui import ui, app
 from src.utils.constants import APP_TITLE, COLOR_PRIMARY
+from src.ui.theme.modern_dark import CUSTOM_CSS
 
 
 def create_layout(content_builder):
@@ -11,6 +12,9 @@ def create_layout(content_builder):
 
     # ---------- ダークモード設定 ----------
     ui.dark_mode(True)
+
+    # ---------- カスタムCSS注入（ページレベル） ----------
+    ui.add_head_html(f"<style>{CUSTOM_CSS}</style>")
 
     # ---------- ヘッダー ----------
     with ui.header(elevated=True).classes("items-center justify-between q-px-md"):
@@ -37,7 +41,7 @@ def create_layout(content_builder):
         # ---- メディアコピー セクション ----
         ui.label("メディアコピー").classes("section-header")
 
-        ui.item = ui.button(
+        ui.button(
             "💾 USB・HDD",
             on_click=lambda: ui.navigate.to("/usb-hdd"),
             icon="usb"
@@ -96,10 +100,7 @@ def create_layout(content_builder):
     # ---------- ステータスバー ----------
     with ui.footer().classes("q-pa-xs q-px-md text-caption"):
         with ui.row().classes("items-center gap-4"):
-            ui.label("").bind_text_from(
-                app.storage.general, "status_text",
-                backward=lambda v: v or "準備完了")
+            ui.label("準備完了")
             ui.space()
-            ui.label("").bind_text_from(
-                app.storage.general, "disk_free",
-                backward=lambda v: v or "")
+            ui.label("MFEPS v2.0").classes("text-grey-6")
+
