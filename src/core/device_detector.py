@@ -49,38 +49,38 @@ class OpticalDriveInfo(BaseModel):
 
 
 def detect_block_devices() -> list[DeviceInfo]:
-    """WMI経由でブロックデバイスを列挙"""
+    """PowerShell経由でブロックデバイスを列挙"""
     devices = []
 
     try:
-        # wmic で物理ディスク情報を取得
+        # PowerShell で物理ディスク情報を取得しJSON形式で出力
         result = subprocess.run(
-            ["wmic", "diskdrive", "get",
-             "Index,Model,SerialNumber,Size,MediaType,InterfaceType,BytesPerSector,Partitions",
-             "/format:list"],
+            ["powershell", "-NoProfile", "-Command",
+             "Get-WmiObject Win32_DiskDrive -ErrorAction SilentlyContinue | Select-Object Index,Model,SerialNumber,Size,MediaType,InterfaceType,BytesPerSector,Partitions | ConvertTo-Json"],
             capture_output=True, text=True, timeout=15, encoding="utf-8",
             errors="replace",
         )
 
         if result.returncode != 0:
-            logger.error(f"wmic diskdrive 失敗: {result.stderr}")
+            logger.error(f"デバイス情報取得失敗: {result.stderr}")
             return devices
 
-        # パース
-        current = {}
-        for line in result.stdout.splitlines():
-            line = line.strip()
-            if "=" in line:
-                key, _, value = line.partition("=")
-                current[key.strip()] = value.strip()
-            elif not line and current:
-                dev = _parse_device(current)
-                if dev:
-                    devices.append(dev)
-                current = {}
+        stdout = result.stdout.strip()
+        if not stdout:
+            return devices
+            
+        try:
+            data = json.loads(stdout)
+        except json.JSONDecodeError as e:
+            logger.error(f"JSONパースエラー: {e}")
+            return devices
 
-        if current:
-            dev = _parse_device(current)
+        if isinstance(data, dict):
+            # 単一デバイスの場合はリスト化
+            data = [data]
+
+        for item in data:
+            dev = _parse_device_json(item)
             if dev:
                 devices.append(dev)
 
@@ -93,35 +93,32 @@ def detect_block_devices() -> list[DeviceInfo]:
         logger.info(f"ブロックデバイス検出: {len(devices)} 台")
 
     except subprocess.TimeoutExpired:
-        logger.error("wmic コマンドがタイムアウトしました")
+        logger.error("デバイス検出コマンドがタイムアウトしました")
     except Exception as e:
         logger.error(f"デバイス検出エラー: {e}")
 
     return devices
 
 
-def _parse_device(data: dict) -> Optional[DeviceInfo]:
-    """wmic出力を DeviceInfo に変換"""
+def _parse_device_json(data: dict) -> Optional[DeviceInfo]:
+    """JSON出力を DeviceInfo に変換"""
     try:
-        index = int(data.get("Index", -1))
-        if index < 0:
+        index = data.get("Index")
+        if index is None or index < 0:
             return None
 
-        size_str = data.get("Size", "0")
-        size = int(size_str) if size_str else 0
-
-        sector_str = data.get("BytesPerSector", "512")
-        sector_size = int(sector_str) if sector_str else 512
+        size = data.get("Size") or 0
+        sector_size = data.get("BytesPerSector") or 512
 
         return DeviceInfo(
             device_path=f"\\\\.\\PhysicalDrive{index}",
             index=index,
-            model=data.get("Model", "Unknown").strip(),
-            serial=data.get("SerialNumber", "").strip(),
-            media_type=data.get("MediaType", "").strip(),
-            interface_type=data.get("InterfaceType", "").strip(),
-            capacity_bytes=size,
-            sector_size=sector_size,
+            model=str(data.get("Model") or "Unknown").strip(),
+            serial=str(data.get("SerialNumber") or "").strip(),
+            media_type=str(data.get("MediaType") or "").strip(),
+            interface_type=str(data.get("InterfaceType") or "").strip(),
+            capacity_bytes=int(size),
+            sector_size=int(sector_size),
         )
     except (ValueError, TypeError) as e:
         logger.warning(f"デバイス情報パース失敗: {e}, data={data}")
@@ -183,33 +180,32 @@ def detect_optical_drives() -> list[OpticalDriveInfo]:
 
     try:
         result = subprocess.run(
-            ["wmic", "cdrom", "get",
-             "Drive,Name,MediaLoaded,Id",
-             "/format:list"],
+            ["powershell", "-NoProfile", "-Command",
+             "Get-WmiObject Win32_CDROMDrive -ErrorAction SilentlyContinue | Select-Object Drive,Name,MediaLoaded,DeviceID | ConvertTo-Json"],
             capture_output=True, text=True, timeout=15, encoding="utf-8",
             errors="replace",
         )
 
         if result.returncode != 0:
-            logger.error(f"wmic cdrom 失敗: {result.stderr}")
+            logger.error(f"光学ドライブ情報取得失敗: {result.stderr}")
             return drives
 
-        current = {}
-        cdrom_index = 0
-        for line in result.stdout.splitlines():
-            line = line.strip()
-            if "=" in line:
-                key, _, value = line.partition("=")
-                current[key.strip()] = value.strip()
-            elif not line and current:
-                drive = _parse_optical(current, cdrom_index)
-                if drive:
-                    drives.append(drive)
-                    cdrom_index += 1
-                current = {}
+        stdout = result.stdout.strip()
+        if not stdout:
+            return drives
+            
+        try:
+            data = json.loads(stdout)
+        except json.JSONDecodeError as e:
+            logger.error(f"光学ドライブJSONパースエラー: {e}")
+            return drives
 
-        if current:
-            drive = _parse_optical(current, cdrom_index)
+        if isinstance(data, dict):
+            # 単一ドライブの場合はリスト化
+            data = [data]
+
+        for i, item in enumerate(data):
+            drive = _parse_optical_json(item, i)
             if drive:
                 drives.append(drive)
 
@@ -221,16 +217,16 @@ def detect_optical_drives() -> list[OpticalDriveInfo]:
     return drives
 
 
-def _parse_optical(data: dict, index: int) -> Optional[OpticalDriveInfo]:
-    """wmic出力を OpticalDriveInfo に変換"""
+def _parse_optical_json(data: dict, index: int) -> Optional[OpticalDriveInfo]:
+    """JSON出力を OpticalDriveInfo に変換"""
     try:
-        drive_letter = data.get("Drive", "").strip()
-        media_loaded = data.get("MediaLoaded", "").strip().upper() == "TRUE"
+        drive_letter = str(data.get("Drive") or "").strip()
+        media_loaded = bool(data.get("MediaLoaded"))
 
         return OpticalDriveInfo(
             device_path=f"\\\\.\\CdRom{index}",
             drive_letter=drive_letter,
-            drive_model=data.get("Name", "Unknown").strip(),
+            drive_model=str(data.get("Name") or "Unknown").strip(),
             media_loaded=media_loaded,
             media_type="NoMedia" if not media_loaded else "Unknown",
         )
