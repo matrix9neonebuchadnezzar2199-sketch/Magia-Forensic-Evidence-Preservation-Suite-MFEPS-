@@ -70,16 +70,14 @@ def build_usb_hdd_page():
                 with ui.row().classes("gap-4 items-center"):
                     ui.label("案件番号:").classes("text-body2")
                     case_input = ui.input(placeholder="CASE-001").classes("min-w-48")
-                    case_input.on("update:model-value",
-                                 lambda e: state.update({"case_number": e.value}))
+                    case_input.bind_value(state, "case_number")
 
                 with ui.row().classes("gap-4 items-center q-mt-sm"):
                     ui.label("証拠品番号:").classes("text-body2")
                     ev_input = ui.input(placeholder="EV-001").classes("min-w-48")
-                    ev_input.on("update:model-value",
-                               lambda e: state.update({"evidence_number": e.value}))
+                    ev_input.bind_value(state, "evidence_number")
 
-                ui.checkbox("コピー後にハッシュ検証を実行", value=True).classes("q-mt-sm")
+                ui.checkbox("コピー後にハッシュ検証を実行", value=True).classes("q-mt-sm").bind_value(state, "verify")
 
             with ui.stepper_navigation():
                 ui.button("← 戻る", on_click=stepper.previous).props("flat")
