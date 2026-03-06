@@ -49,5 +49,43 @@ def build_reports_page():
             "text-caption text-grey-5")
 
         with ui.row().classes("gap-2 q-mt-md"):
-            ui.button("📊 全ジョブのレポート一括生成", color="primary").props("unelevated")
-            ui.button("📁 レポートフォルダを開く").props("outline")
+            async def generate_all():
+                from src.services.report_service import ReportService
+                from src.models.database import get_session
+                from src.models.schema import ImagingJob
+                
+                ui.notify("レポート生成を開始しました...")
+                try:
+                    svc = ReportService()
+                    session = get_session()
+                    jobs = session.query(ImagingJob).filter(ImagingJob.status == "completed").all()
+                    
+                    count = 0
+                    for job in jobs:
+                        svc.generate_pdf(job.id)
+                        svc.generate_html(job.id)
+                        count += 1
+                        
+                    ui.notify(f"{count}件のジョブレポートを生成しました", type="positive")
+                    # リロードして一覧に反映
+                    ui.timer(1.0, ui.navigate.reload, once=True)
+                except Exception as e:
+                    ui.notify(f"レポート生成エラー: {e}", type="negative")
+                finally:
+                    if 'session' in locals():
+                        session.close()
+
+            def open_reports_dir():
+                import os, platform, subprocess
+                from src.utils.config import get_config
+                p = get_config().reports_dir
+                p.mkdir(parents=True, exist_ok=True)
+                if platform.system() == "Windows":
+                    os.startfile(p)
+                elif platform.system() == "Darwin":
+                    subprocess.Popen(["open", p])
+                else:
+                    subprocess.Popen(["xdg-open", p])
+
+            ui.button("📊 全ジョブのレポート一括生成", on_click=generate_all, color="primary").props("unelevated")
+            ui.button("📁 レポートフォルダを開く", on_click=open_reports_dir).props("outline")

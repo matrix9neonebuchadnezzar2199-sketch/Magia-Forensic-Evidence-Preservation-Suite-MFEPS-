@@ -1,0 +1,119 @@
+# MFEPS v2.0 引継ぎ・システム構成書 (HANDOVER)
+
+本ドキュメントは、MFEPS v2.0 (Magia Forensic Evidence Preservation Suite) のシステム構成、ディレクトリ構造、使用技術、そしてこれまでに発生した主要な不具合とその解決策をまとめた完全版の引継ぎ資料です。
+
+---
+
+## 1. プロジェクト概要・使用技術
+物理ドライブ (USB/HDD) および光学メディア (CD/DVD/BD) のフォレンジック保全（セクタコピー、ハッシュ計算、コピーガード検出、監査ログ記録）を行うためのポータブル・デスクトップアプリケーション。
+
+*   **言語**: Python 3.12+ (非同期処理 `asyncio` を多用)
+*   **UI フレームワーク**: NiceGUI (Vue.js ベース。`main.py` から `localhost:8580` で起動)
+*   **データベース**: SQLite (SQLAlchemy ORMによる6テーブル構成。WALモード・外部キー有効化)
+*   **低レベルI/O**: Windows API (`ctypes`, `win32file`, `win32api` 等) による物理ドライブ（`\\.\PhysicalDriveX`等）の直接アクセス
+*   **ハードウェア制御**: WMI (Windows Management Instrumentation) を用いたデバイス情報取得 (`wmic`ラッパー等)
+*   **レポート生成**: `reportlab` (PDF), HTML 出力
+
+---
+
+## 2. ディレクトリ構成と各モジュールの役割
+
+```text
+mfeps/
+├── data/                  # データベースファイル (mfeps.db) の保存先
+├── logs/                  # アプリケーションログ (mfeps.log) の保存先
+├── output/                # イメージング結果 (image.dd等) のデフォルト保存先
+├── reports/               # 自動生成された報告書 (PDF/HTML) の保存先
+├── tmp_test_integration.py# (テスト用) UI非依存の結合テストスクリプト
+├── HANDOVER.txt           # 本引継ぎドキュメント
+└── src/                   # ソースコード・ルートディレクトリ
+    ├── main.py            # アプリ起動エントリポイント (NiceGUIサーバー立ち上げ)
+    ├── core/              # [コア層] デバイス制御・重いビジネスロジック
+    │   ├── device_detector.py      # WMIを利用したブロックデバイス/光学ドライブ検出
+    │   ├── imaging_engine.py       # USB/HDD向けセクタバイセクタイメージング処理
+    │   ├── optical_engine.py       # 光学メディア解析・イメージング処理
+    │   ├── copy_guard_analyzer.py  # 10種類の光学コピーガード検出 (CSS, AACS等)
+    │   ├── hash_engine.py          # トリプルハッシュ (MD5, SHA1, SHA256) 並列計算
+    │   ├── buffer_manager.py       # ダブルバッファリング管理
+    │   ├── win32_raw_io.py         # 物理ドライブの読み書き用Windows APIラッパー
+    │   └── write_blocker.py        # ソフトウェア・ライトブロック検知
+    ├── services/          # [サービス層] UIからの要求を受け、コア層とDB操作を仲介
+    │   ├── imaging_service.py      # USB/HDDイメージング用オーケストレータ
+    │   ├── optical_service.py      # 光学メディアイメージング用オーケストレータ
+    │   ├── case_service.py         # 案件/証拠品CRUD (未登録IDの自動生成機能あり)
+    │   ├── report_service.py       # イメージング結果からのレポート出力処理
+    │   ├── coc_service.py          # Chain of Custody (証拠保全連鎖) の記録・出力
+    │   └── audit_service.py        # ハッシュチェーンつき監査ログ記録
+    ├── models/            # [データモデル層]
+    │   ├── database.py             # SQLite接続管理 (Session取得, 初期化)
+    │   └── schema.py               # SQLAlchemy テーブル定義 (Case, EvidenceItem, ImagingJob 等)
+    ├── ui/                # [UI層] NiceGUIコンポーネント群
+    │   ├── layout.py               # サイドバー・ヘッダー・Modern Darkデザイン共通レイアウト
+    │   ├── pages/                  # 各画面 (ルーティング先)
+    │   │   ├── dashboard.py        # ダッシュボード (全体Overview)
+    │   │   ├── usb_hdd.py          # USB/HDDウィザード (ドライブ選択〜完了)
+    │   │   ├── optical.py          # 光学メディアウィザード (解析・GUARD検出〜完了)
+    │   │   ├── reports.py          # 報告書一覧・一括生成画面
+    │   │   ├── coc.py              # 証拠保全連鎖(CoC)タイムライン画面
+    │   │   ├── audit.py            # 監査ログビューア
+    │   │   └── settings.py         # アプリケーション設定画面
+    │   └── components/             # 再利用可能なUI部品 (進捗パネル等)
+    └── utils/             # ユーティリティ群 (Config, 定数定義, ロガー初期化等)
+```
+
+---
+
+## 3. アプリケーション・アーキテクチャの基本設計 (役割分担)
+
+1.  **UI層 (`src/ui/`)**: ユーザー操作の受け付け、入力値のバリデーション、進捗UI（プログレスバー等）の更新を行います。
+    *   重い処理は直接行わず、非同期 (`async def`) でサービス層を呼び出します。
+2.  **サービス層 (`src/services/`)**: コントローラー機能。UIから渡されたパラメーターを検証し、DB(`models/`)へのレコード作成・状態更新を行いつつ、コア層(`core/`)のエンジンを起動 (`asyncio.create_task`等) します。
+3.  **コア層 (`src/core/`)**: 物理的なディスクの読み取りやハッシュ計算など、純粋なアルゴリズムやOS依存の機能を提供します。
+    *   メインスレッド（UIスレッド）をブロックしないよう、適宜 `run_in_executor` などを用いて別スレッド・別プロセスで実行されます。
+4.  **データベース層 (`src/models/`, `data/`)**: 全てのジョブ履歴、コピー結果、ハッシュ値、監査ログはSQLiteに一元管理されます。
+
+---
+
+## 4. 過去に発生した主要な不具合とその対処履歴 (トラブルシューティング)
+
+テストおよび実装段階で以下のような不具合が発生し、すべて解決済みです。
+保守や拡張の際の参考にしてください。
+
+### ① ポート競合エラー (`[winerror 10048]`)
+*   **事象:** `python src/main.py` 起動時に `8580` ポートが既に使用されているエラー。
+*   **原因:** 過去のテスト起動プロセスや、エラー終了したPythonの裏プロセスがポートを開いたまま残存。
+*   **対策:** PowerShell コマンド `try { Get-Process -Id (Get-NetTCPConnection -LocalPort 8580).OwningProcess | Stop-Process -Force } catch {}` などで強制終了。運用側でも確実に終了できるようUI右上のシャットダウンボタン等を使用すること。
+
+### ② NiceGUI の入力値バインディングによる同期遅延
+*   **事象:** `usb_hdd.py` や `optical.py` などで、「案件番号を入力しているのに未入力エラー」が出る。
+*   **原因:** `ui.input().bind_value(state_dict, "key")` によって辞書と自動同期させる実装を行っていたが、ボタン押下（onclick）の非同期イベント発火タイミングとNiceGUIの内部同期タイミングがズレており、中身が「空文字」として評価されていた。
+*   **対策:** バインディング方式を廃止。 `case_input = ui.input()` とコンポーネントの参照を変数に保持し、ボタン押下時に直接 `case_input.value` から確実に入力文字を取得する構造へ書き換えた。
+
+### ③ AttributeError: 'GenericEventArguments' object has no attribute 'value'
+*   **事象:** `coc.py` でセレクトボックスの選択を変更した瞬間にクラッシュ。
+*   **原因:** NiceGUIのイベント引数 `e` に対して `e.value` を参照していたが、オブジェクトの仕様変更等により `e.sender.value` で参照する必要があった。
+*   **対策:** イベントフック内の `e.value` を全て `e.sender.value` へ修正。
+
+### ④ DB外部キー制約エラー (FOREIGN KEY constraint failed)
+*   **事象:** イメージング開始時にクラッシュ。
+*   **原因:** ユーザーが画面から自由に入力した「案件番号(例:CASE-001)文字列」を、そのまま `imaging_jobs` テーブルの `case_id` などの外部キー制約カラム（内部で必要としているのはUUID）へ挿入しようとして失敗した。
+*   **対策:**
+    *   `src/services/case_service.py` に `get_or_create_case()` と `get_or_create_evidence()` を実装。
+    *   `imaging_service.py` / `optical_service.py` の開始処理直前で、ユーザーが入力した文字列を検索し、もしDB内に存在しなければ自動で新しく `UUID`付きの案件/証拠品レコードを作成（自動登録）してから、そのUUIDをジョブへ紐づける処理フローへ差し替えた。
+
+### ⑤ 結合テストスクリプトでの AttributeError 及び RuntimeError
+*   **事象:** バックエンド単体テストスクリプト(`tmp_test_integration.py`)実行時に `DeviceInfo`プロパティ不一致やDB未初期化エラー。
+*   **原因・対策:**
+    *   `device.device_model` と誤参照していた箇所を正しいプロパティである `device.model` へ修正（`imaging_service.py`内）。
+    *   UIサーバーを起動しない場合、DBの初期化処理関数（`init_database(config.db_path)`）が勝手には呼ばれないため、テスト・CLIスクリプト冒頭で明示的に呼び出すよう修正。
+
+---
+
+## 5. Next Steps（次にやるべきこと）
+実装はコア機能からUI連携、エラー修復まですべての段階で完了しています。
+次の担当者は、**手動等による実画面（ブラウザ）を使用したE2E (End-to-End) テスト** を進めてください。
+
+1.  Powershellで `python src/main.py` を実行。
+2.  ブラウザで表示されるメニューから各種ウィザード項目にアクセスし、問題なく画面が遷移することを確認。
+3.  ダッシュボードから案件の作成や削除等のライフサイクルが機能するか確認。
+4.  テスト用のUSB等を挿入し、コピー完了までプログレスバーが進行し、結果がDB（およびCoCや監査ログ画面）に表示されるか確認。

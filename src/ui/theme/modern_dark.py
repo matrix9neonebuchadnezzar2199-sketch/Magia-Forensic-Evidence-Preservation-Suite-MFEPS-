@@ -47,6 +47,8 @@ body {{
     color: var(--mfeps-text) !important;
 }}
 
+
+
 /* ヘッダー */
 .q-header {{
     background: linear-gradient(135deg, {COLOR_HEADER}, {COLOR_SURFACE}) !important;
@@ -218,9 +220,11 @@ body {{
 .pulse-glow {{
     animation: pulse-glow 2s ease-in-out infinite;
 }}
+
 """
 
 
 def get_font_size_css(size: int) -> str:
     """フォントサイズを動的に変更するCSS"""
     return f"body {{ font-size: {size}px !important; }}"
+

@@ -23,6 +23,8 @@ class ImagingService:
     def __init__(self):
         self._engines: dict[str, ImagingEngine] = {}
         self._tasks: dict[str, asyncio.Task] = {}
+        self._results: dict[str, dict] = {}
+
 
     async def start_imaging(
         self,
@@ -40,7 +42,21 @@ class ImagingService:
         config = get_config()
         job_id = str(uuid.uuid4())
 
-        # 出力先ディレクトリ
+        from src.services.case_service import CaseService, EvidenceService
+        case_svc = CaseService()
+        ev_svc = EvidenceService()
+        
+        real_case_id = case_svc.get_or_create_case(case_number=case_id)
+        real_evidence_id = ev_svc.get_or_create_evidence(
+            case_id=real_case_id,
+            evidence_number=evidence_id,
+            media_type="usb_hdd",
+            device_model=device.model,
+            device_serial=device.serial,
+            capacity_bytes=device.capacity_bytes
+        )
+
+        # 出力先ディレクトリ (ディレクトリ名にはユーザーが入力したわかりやすい文字列番号を使う)
         output_dir = config.output_dir / case_id / evidence_id
         output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -49,7 +65,7 @@ class ImagingService:
         try:
             db_job = ImagingJob(
                 id=job_id,
-                evidence_id=evidence_id,
+                evidence_id=real_evidence_id,
                 status="pending",
                 source_path=device.device_path,
                 output_path=str(output_dir / "image.dd"),
@@ -75,8 +91,8 @@ class ImagingService:
         # ジョブパラメータ
         job_params = ImagingJobParams(
             job_id=job_id,
-            evidence_id=evidence_id,
-            case_id=case_id,
+            evidence_id=real_evidence_id,
+            case_id=real_case_id,
             source_path=device.device_path,
             output_dir=str(output_dir),
             output_format=output_format,
@@ -105,9 +121,14 @@ class ImagingService:
         except Exception as e:
             logger.error(f"イメージングタスクエラー: {e}")
             self._update_job_status(job_id, "failed")
+            self._results[job_id] = {
+                "status": "failed",
+                "error_message": str(e),
+            }
         finally:
             self._engines.pop(job_id, None)
             self._tasks.pop(job_id, None)
+
 
     async def on_imaging_complete(self, result: ImagingResult) -> None:
         """イメージング完了処理: DB更新"""
@@ -171,12 +192,30 @@ class ImagingService:
         finally:
             session.close()
 
+        # 結果をキャッシュ（UI参照用）
+        self._results[result.job_id] = {
+            "status": result.status,
+            "source_hashes": result.source_hashes,
+            "verify_hashes": result.verify_hashes,
+            "match_result": result.match_result,
+            "total_bytes": result.total_bytes,
+            "copied_bytes": result.copied_bytes,
+            "error_count": result.error_count,
+            "elapsed_seconds": result.elapsed_seconds,
+            "avg_speed_mibps": result.avg_speed_mibps,
+            "output_path": result.output_path,
+        }
+
     def get_progress(self, job_id: str) -> dict:
         """実行中ジョブの進捗を取得"""
         engine = self._engines.get(job_id)
         if engine:
             return engine.get_progress()
+        # エンジン削除後はキャッシュから返す
+        if job_id in self._results:
+            return self._results[job_id]
         return {"status": "unknown"}
+
 
     async def cancel_imaging(self, job_id: str) -> None:
         """イメージングをキャンセル"""

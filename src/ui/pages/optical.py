@@ -15,7 +15,17 @@ def build_optical_page():
     """光学メディアウィザード"""
     ui.label("💿 CD・DVD・BD イメージング").classes("text-h5 text-weight-bold q-mb-md")
 
-    state = {"selected_drive": None, "analysis": None, "guard_result": None}
+    state = {
+        "selected_drive": None, 
+        "analysis": None, 
+        "guard_result": None,
+        "case_number": "",
+        "evidence_number": "",
+        "output_format": "ISO",
+        "verify": False,
+        "job_id": None,
+        "result": None
+    }
 
     with ui.stepper().classes("full-width").props("vertical animated") as stepper:
 
@@ -40,7 +50,40 @@ def build_optical_page():
             ui.button("🔄 ドライブ検出", on_click=refresh_drives, color="primary").props("unelevated")
 
             with ui.stepper_navigation():
-                ui.button("次へ →", on_click=stepper.next, color="primary").props("unelevated")
+                async def on_step1_next():
+                    if not state.get("selected_drive"):
+                        ui.notify("ドライブを選択してください", type="warning")
+                        return
+                    if not state["selected_drive"].media_loaded:
+                        ui.notify("メディアが装填されていません", type="negative")
+                        return
+                    
+                    stepper.next()
+                    
+                    # 分析フェーズ
+                    scan_container.clear()
+                    with scan_container:
+                        ui.spinner(size="lg")
+                        ui.label("メディア情報の解析とコピーガードを検出しています...")
+                        
+                    analyzer = OpticalMediaAnalyzer()
+                    drive_path = state["selected_drive"].device_path
+                    analysis = await asyncio.get_event_loop().run_in_executor(
+                        None, analyzer.analyze, drive_path)
+                    state["analysis"] = analysis
+                    
+                    guard_analyzer = CopyGuardAnalyzer()
+                    guard_result = await asyncio.get_event_loop().run_in_executor(
+                        None, guard_analyzer.analyze, drive_path, analysis)
+                    state["guard_result"] = guard_result
+                    
+                    scan_container.clear()
+                    with scan_container:
+                        ui.label(f"メディア種類: {analysis.media_type} ({analysis.file_system})").classes("text-body1 text-weight-bold")
+                        ui.label(f"容量: {analysis.capacity_bytes / (1024**3):.2f} GiB").classes("text-caption text-grey-6")
+                        render_copy_guard_badges(guard_result.protections)
+
+                ui.button("次へ →", on_click=on_step1_next, color="primary").props("unelevated")
 
         # ===== STEP 2: プリスキャン + コピーガード解析 =====
         with ui.step("プリスキャン・コピーガード解析", icon="search"):
@@ -51,44 +94,122 @@ def build_optical_page():
 
                 with ui.row().classes("gap-4 items-center"):
                     ui.label("案件番号:").classes("text-body2")
-                    ui.input(placeholder="CASE-001").classes("min-w-48")
+                    case_input = ui.input(placeholder="CASE-001").classes("min-w-48")
 
                 with ui.row().classes("gap-4 items-center q-mt-sm"):
                     ui.label("証拠品番号:").classes("text-body2")
-                    ui.input(placeholder="EV-001").classes("min-w-48")
+                    ev_input = ui.input(placeholder="EV-001").classes("min-w-48")
 
                 with ui.row().classes("gap-4 items-center q-mt-sm"):
                     ui.label("出力形式:").classes("text-body2")
-                    ui.select(options=["ISO", "RAW (dd)"], value="ISO")
+                    format_select = ui.select(options=["ISO", "RAW (dd)"], value="ISO")
 
-                ui.switch("二回読取検証（高信頼性）", value=False).classes("q-mt-sm")
+                verify_switch = ui.switch("二回読取検証（高信頼性）", value=False).classes("q-mt-sm")
 
             with ui.stepper_navigation():
                 ui.button("← 戻る", on_click=stepper.previous).props("flat")
-                ui.button("▶️ コピー開始 →", on_click=stepper.next,
-                         color="primary").props("unelevated")
+                
+                async def start_copy():
+                    case_val = case_input.value
+                    ev_val = ev_input.value
+
+                    if not case_val or not ev_val:
+                        ui.notify("案件番号と証拠品番号を入力してください", type="warning")
+                        return
+                    
+                    from src.services.optical_service import get_optical_service
+                    svc = get_optical_service()
+                    job_id = await svc.start_optical_imaging(
+                        drive_path=state["selected_drive"].device_path,
+                        case_id=case_val,
+                        evidence_id=ev_val,
+                        analysis=state["analysis"],
+                        output_format=format_select.value,
+                        use_pydvdcss=state["guard_result"].overall_can_decrypt,
+                        verify=verify_switch.value
+                    )
+                    state["job_id"] = job_id
+                    
+                    progress_container.clear()
+                    log_area.clear()
+                    log_area.push(f"[{job_id}] 光学メディアのイメージングを開始しました...")
+                    
+                    if "timer" in state and state["timer"]:
+                        state["timer"].deactivate()
+                    state["timer"] = ui.timer(1.0, update_progress)
+                    stepper.next()
+
+                ui.button("▶️ コピー開始 →", on_click=start_copy, color="primary").props("unelevated")
 
         # ===== STEP 3: コピー実行 =====
         with ui.step("コピー実行", icon="content_copy"):
             ui.label("⚙️ コピー実行中").classes("text-h6 q-mb-md")
-            ui.linear_progress(value=0, show_value=True).classes("full-width")
-            with ui.row().classes("gap-4 q-mt-sm"):
-                ui.label("トラック: --").classes("text-body2")
-                ui.label("速度: -- MiB/s").classes("text-body2")
-                ui.label("リトライ: 0").classes("text-body2")
-            ui.log(max_lines=100).classes("full-width q-mt-md").style("height: 200px;")
+            
+            progress_container = ui.column().classes("full-width")
+            log_area = ui.log(max_lines=100).classes("full-width q-mt-md").style("height: 200px;")
+
+            async def cancel_job():
+                if state.get("job_id"):
+                    from src.services.optical_service import get_optical_service
+                    await get_optical_service().cancel_imaging(state["job_id"])
+                    log_area.push("⚠️ ジョブをキャンセルしました")
 
             with ui.row().classes("gap-2 q-mt-md"):
                 ui.button("⏸ 一時停止").props("outline")
-                ui.button("⏹ 中止", color="negative").props("outline")
+                ui.button("⏹ 中止", on_click=cancel_job, color="negative").props("outline")
 
             with ui.stepper_navigation():
-                ui.button("結果を確認 →", on_click=stepper.next, color="primary").props("unelevated")
+                btn_next = ui.button("結果を確認 →", on_click=stepper.next, color="primary").props("unelevated")
+                btn_next.disable()
+                
+            async def update_progress():
+                if not state.get("job_id"):
+                    return
+                from src.services.optical_service import get_optical_service
+                svc = get_optical_service()
+                progress = svc.get_progress(state["job_id"])
+                status = progress.get("status", "unknown")
+                
+                progress_container.clear()
+                with progress_container:
+                    from src.ui.components.progress_panel import render_progress_panel, render_hash_display
+                    render_progress_panel(progress)
+                    if "source_hashes" in progress and progress["source_hashes"]:
+                        render_hash_display(progress["source_hashes"])
+                        
+                if status in ["completed", "failed", "cancelled"]:
+                    if "timer" in state and state["timer"]:
+                        state["timer"].deactivate()
+                        state["timer"] = None
+                    btn_next.enable()
+                    state["result"] = progress
+                    build_result_page()
 
         # ===== STEP 4: リザルト =====
         with ui.step("リザルト", icon="check_circle"):
             ui.label("✅ コピー完了").classes("text-h6 q-mb-md")
+            
+            result_container = ui.column().classes("full-width")
             ui.label("結果はコピー実行後に表示されます").classes("text-caption text-grey-6")
+
+            def build_result_page():
+                result_container.clear()
+                res = state.get("result", {})
+                with result_container:
+                    if res.get("status") == "completed":
+                        ui.label("イメージングプロセスの結果レポート").classes("text-body1 q-mb-md")
+                        
+                        src_hashes = res.get("source_hashes", {})
+                        if src_hashes:
+                            from src.ui.components.progress_panel import render_hash_display
+                            render_hash_display(src_hashes, "ソースハッシュ (検証スキップ)")
+                            
+                        if res.get("error_count", 0) > 0:
+                            from src.ui.components.progress_panel import render_error_panel
+                            errors = [{"lba": s} for s in res.get("error_sectors", [])]
+                            render_error_panel(errors)
+                    else:
+                        ui.label(f"ジョブが正常に完了しませんでした ({res.get('status', 'unknown')})").classes("text-body1 text-negative")
 
             with ui.row().classes("gap-2 q-mt-lg"):
                 ui.button("📄 報告書PDF", color="primary").props("unelevated")
@@ -100,15 +221,17 @@ def build_optical_page():
 def _render_drive_option(drive: OpticalDriveInfo, state: dict):
     """光学ドライブ選択オプション"""
     media_color = "positive" if drive.media_loaded else "grey"
+    border_color = media_color
 
     with ui.card().classes("q-pa-sm cursor-pointer full-width").style(
-            "border-left: 3px solid rgba(108, 99, 255, 0.3);"):
+            f"border-left: 3px solid var(--q-{border_color});"):
         with ui.row().classes("items-center gap-2"):
+            ui.radio(options=[drive.device_path], on_change=lambda e, d=drive: state.update({"selected_drive": d}))
             ui.icon("album")
             ui.label(f"{drive.drive_letter}").classes("text-weight-bold")
             ui.label(drive.drive_model).classes("text-caption text-grey-5")
 
-        with ui.row().classes("q-ml-lg items-center gap-1"):
+        with ui.row().classes("q-ml-lg q-pl-lg items-center gap-1"):
             if drive.media_loaded:
                 ui.icon("check_circle", size="xs", color="positive")
                 ui.label("メディア装填済み").classes("text-caption text-positive")

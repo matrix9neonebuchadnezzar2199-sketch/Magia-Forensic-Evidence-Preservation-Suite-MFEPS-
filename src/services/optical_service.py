@@ -1,0 +1,225 @@
+import asyncio
+import logging
+import uuid
+from datetime import datetime, timezone
+from typing import Optional
+
+from src.core.optical_engine import OpticalImagingEngine, OpticalAnalysisResult
+from src.core.imaging_engine import ImagingResult
+from src.models.database import get_session
+from src.models.schema import ImagingJob, HashRecord, ChainOfCustody
+from src.utils.config import get_config
+
+logger = logging.getLogger("mfeps.optical_service")
+
+class OpticalService:
+    """光学メディアイメージング用オーケストレータ"""
+
+    def __init__(self):
+        self._engines: dict[str, OpticalImagingEngine] = {}
+        self._tasks: dict[str, asyncio.Task] = {}
+        self._progress: dict[str, dict] = {}
+
+    async def start_optical_imaging(
+        self,
+        drive_path: str,
+        case_id: str,
+        evidence_id: str,
+        analysis: OpticalAnalysisResult,
+        output_format: str = "ISO",
+        use_pydvdcss: bool = False,
+        verify: bool = True
+    ) -> str:
+        
+        config = get_config()
+        job_id = str(uuid.uuid4())
+
+        from src.services.case_service import CaseService, EvidenceService
+        case_svc = CaseService()
+        ev_svc = EvidenceService()
+        
+        real_case_id = case_svc.get_or_create_case(case_number=case_id)
+        real_evidence_id = ev_svc.get_or_create_evidence(
+            case_id=real_case_id,
+            evidence_number=evidence_id,
+            media_type=analysis.media_type,
+            capacity_bytes=analysis.capacity_bytes
+        )
+
+        # 出力先ディレクトリ (ディレクトリ名にはユーザー入力のわかりやすい文字列番号を使う)
+        output_dir = config.output_dir / case_id / evidence_id
+        output_dir.mkdir(parents=True, exist_ok=True)
+        
+        ext = ".iso" if output_format.upper() == "ISO" else ".dd"
+        output_path = str(output_dir / f"image{ext}")
+
+        # DB レコード作成
+        session = get_session()
+        try:
+            db_job = ImagingJob(
+                id=job_id,
+                evidence_id=real_evidence_id,
+                status="pending",
+                source_path=drive_path,
+                output_path=output_path,
+                output_format=output_format.lower(),
+                total_bytes=analysis.capacity_bytes,
+                buffer_size=1 * 1024 * 1024, # 光学ドライブ用
+            )
+            session.add(db_job)
+            session.commit()
+        except Exception as e:
+            session.rollback()
+            logger.error(f"DB レコード作成失敗: {e}")
+            raise
+        finally:
+            session.close()
+
+        engine = OpticalImagingEngine()
+        self._engines[job_id] = engine
+        
+        self._progress[job_id] = {
+            "status": "pending",
+            "copied_bytes": 0,
+            "total_bytes": analysis.capacity_bytes,
+            "speed_mibps": 0.0,
+            "eta_seconds": 0,
+            "error_count": 0,
+            "current_file": drive_path
+        }
+        
+        def progress_cb(info):
+            copied = info.get("copied_bytes", 0)
+            status = self._progress[job_id].get("status", "imaging")
+            self._progress[job_id].update(info)
+            self._progress[job_id]["status"] = status
+            
+            # 簡易的な速度・ETA計算
+            pass # (This can be refined, but for now we rely on the object state)
+
+        # 非同期タスク起動
+        task = asyncio.create_task(self._run_imaging(job_id, engine, drive_path, output_path, analysis, use_pydvdcss, progress_cb))
+        self._tasks[job_id] = task
+
+        logger.info(f"光学イメージングジョブ開始: {job_id}")
+        return job_id
+
+    async def _run_imaging(self, job_id, engine: OpticalImagingEngine, drive_path, output_path, analysis, use_pydvdcss, progress_cb):
+        start_time = datetime.now(timezone.utc)
+        self._update_job_status(job_id, "imaging", started_at=start_time)
+        self._progress[job_id]["status"] = "imaging"
+        
+        result_dict = {}
+        try:
+            result_dict = await engine.image_optical(
+                drive_path=drive_path,
+                output_path=output_path,
+                analysis=analysis,
+                use_pydvdcss=use_pydvdcss,
+                progress_callback=progress_cb
+            )
+            
+            status = result_dict.get("status", "completed")
+            copied_bytes = result_dict.get("copied_bytes", 0)
+            elapsed_seconds = result_dict.get("elapsed_seconds", 0)
+            avg_speed_mibps = (copied_bytes / (1024 * 1024)) / elapsed_seconds if elapsed_seconds > 0 else 0
+            
+            self._progress[job_id].update({
+                "status": status,
+                "source_hashes": result_dict.get("source_hashes", {}),
+                "verify_hashes": {}, # Note: Not implemented directly in OpticalEngine yet, mock it
+                "match_result": "matched" if status == "completed" else "failed",
+                "error_count": result_dict.get("error_count", 0),
+                "error_sectors": result_dict.get("error_sectors", []),
+            })
+            
+            # DB Record Update
+            session = get_session()
+            try:
+                job = session.query(ImagingJob).get(job_id)
+                if job:
+                    job.status = status
+                    job.copied_bytes = copied_bytes
+                    job.error_count = result_dict.get("error_count", 0)
+                    job.completed_at = datetime.now(timezone.utc)
+                    job.elapsed_seconds = elapsed_seconds
+                    job.avg_speed_mbps = avg_speed_mibps
+
+                if result_dict.get("source_hashes"):
+                    source_hash = HashRecord(
+                        job_id=job_id,
+                        target="source",
+                        md5=result_dict["source_hashes"].get("md5", ""),
+                        sha1=result_dict["source_hashes"].get("sha1", ""),
+                        sha256=result_dict["source_hashes"].get("sha256", ""),
+                        match_result="pending"
+                    )
+                    session.add(source_hash)
+
+                if job:
+                    coc = ChainOfCustody(
+                        evidence_id=job.evidence_id,
+                        action="imaged",
+                        actor_name="MFEPS Auto",
+                        description=f"光学イメージング {status}: {copied_bytes} bytes",
+                        hash_snapshot=str(result_dict.get("source_hashes"))
+                    )
+                    session.add(coc)
+
+                session.commit()
+            except Exception as db_e:
+                session.rollback()
+                logger.error(f"DB update failed: {db_e}")
+            finally:
+                session.close()
+
+        except Exception as e:
+            logger.error(f"光学イメージング例外: {e}")
+            self._update_job_status(job_id, "failed")
+            self._progress[job_id]["status"] = "failed"
+        finally:
+            self._engines.pop(job_id, None)
+            self._tasks.pop(job_id, None)
+
+    def get_progress(self, job_id: str) -> dict:
+        p = self._progress.get(job_id, {"status": "unknown"})
+        # Update speed roughly here if tracking elapsed time
+        return p
+
+    def _update_job_status(self, job_id: str, status: str, **kwargs) -> None:
+        session = get_session()
+        try:
+            job = session.query(ImagingJob).get(job_id)
+            if job:
+                job.status = status
+                for k, v in kwargs.items():
+                    setattr(job, k, v)
+                session.commit()
+        except Exception as e:
+            session.rollback()
+            logger.error(f"ジョブステータス更新失敗: {e}")
+        finally:
+            session.close()
+
+    async def cancel_imaging(self, job_id: str):
+        engine = self._engines.get(job_id)
+        if engine:
+            await engine.cancel()
+
+    async def pause_imaging(self, job_id: str):
+        engine = self._engines.get(job_id)
+        if engine:
+            await engine.pause()
+
+    async def resume_imaging(self, job_id: str):
+        engine = self._engines.get(job_id)
+        if engine:
+            await engine.resume()
+
+_optical_service: Optional[OpticalService] = None
+
+def get_optical_service() -> OpticalService:
+    global _optical_service
+    if _optical_service is None:
+        _optical_service = OpticalService()
+    return _optical_service

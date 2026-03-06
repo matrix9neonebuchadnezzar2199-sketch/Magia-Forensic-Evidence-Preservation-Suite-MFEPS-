@@ -70,14 +70,12 @@ def build_usb_hdd_page():
                 with ui.row().classes("gap-4 items-center"):
                     ui.label("案件番号:").classes("text-body2")
                     case_input = ui.input(placeholder="CASE-001").classes("min-w-48")
-                    case_input.bind_value(state, "case_number")
 
                 with ui.row().classes("gap-4 items-center q-mt-sm"):
                     ui.label("証拠品番号:").classes("text-body2")
                     ev_input = ui.input(placeholder="EV-001").classes("min-w-48")
-                    ev_input.bind_value(state, "evidence_number")
 
-                ui.checkbox("コピー後にハッシュ検証を実行", value=True).classes("q-mt-sm").bind_value(state, "verify")
+                verify_checkbox = ui.checkbox("コピー後にハッシュ検証を実行", value=True).classes("q-mt-sm")
 
             with ui.stepper_navigation():
                 ui.button("← 戻る", on_click=stepper.previous).props("flat")
@@ -86,16 +84,20 @@ def build_usb_hdd_page():
                     if not state["selected_device"]:
                         ui.notify("デバイスが選択されていません", type="negative")
                         return
-                    if not state["case_number"] or not state["evidence_number"]:
+
+                    case_val = case_input.value
+                    ev_val = ev_input.value
+
+                    if not case_val or not ev_val:
                         ui.notify("案件番号と証拠品番号を入力してください", type="warning")
                         return
 
                     service = get_imaging_service()
                     job_id = await service.start_imaging(
                         device=state["selected_device"],
-                        case_id=state["case_number"],
-                        evidence_id=state["evidence_number"],
-                        verify=state.get("verify", True),
+                        case_id=case_val,
+                        evidence_id=ev_val,
+                        verify=verify_checkbox.value,
                     )
                     state["job_id"] = job_id
                     
@@ -136,40 +138,45 @@ def build_usb_hdd_page():
                          color="primary").props("unelevated")
                 btn_next.disable() # コピー完了まで無効化
 
-            async def update_progress():
+            def update_progress():
+
+                print(f"[TIMER] tick job_id={state.get('job_id')}")
                 if not state.get("job_id"):
                     return
-                
-                service = get_imaging_service()
-                progress = service.get_progress(state["job_id"])
-                status = progress.get("status", "unknown")
-                
-                progress_container.clear()
-                with progress_container:
-                    render_progress_panel(progress)
-                    if "source_hashes" in progress:
-                        render_hash_display(progress["source_hashes"])
-                
-                # ログの追加
-                if "current_file" in progress and progress["current_file"]:
-                    log_area.push(f"書き込み中: {progress['current_file']}")
 
-                if status in ["completed", "failed", "cancelled"]:
-                    if "timer" in state and state["timer"]:
-                        state["timer"].deactivate()
-                        state["timer"] = None
-                    btn_next.enable()
-                    state["result"] = progress
-                    
-                    if status == "completed":
-                        log_area.push("✅ イメージングが正常に完了しました")
-                        ui.notify("コピーが完了しました", type="positive")
-                    else:
-                        log_area.push(f"❌ イメージング終了: {status}")
-                        ui.notify(f"コピーが終了しました ({status})", type="negative")
-                        
-                    # リザルト画面の生成
-                    build_result_page()
+                try:
+
+                    service = get_imaging_service()
+                    progress = service.get_progress(state["job_id"])
+                    status = progress.get("status", "unknown")
+
+                    progress_container.clear()
+                    with progress_container:
+                        render_progress_panel(progress)
+
+                    if status in ["completed", "failed", "cancelled"]:
+                        if "timer" in state and state["timer"]:
+                            state["timer"].deactivate()
+                            state["timer"] = None
+                        state["result"] = progress
+                        btn_next.enable()
+
+                        if status == "completed":
+                            log_area.push("✅ イメージングが正常に完了しました")
+                            ui.notify("コピーが完了しました！ 「結果を確認」ボタンを押してください。", type="positive")
+                        elif status == "failed":
+                            log_area.push(f"❌ イメージング失敗: {progress.get('error_message', '不明')}")
+                            ui.notify("コピーが失敗しました", type="negative")
+                        else:
+                            log_area.push("⚠️ キャンセルされました")
+                            ui.notify("コピーをキャンセルしました", type="warning")
+
+                except Exception as ex:
+                    import traceback
+                    print(f"[UPDATE_PROGRESS ERROR] {ex}")
+                    traceback.print_exc()
+                    log_area.push(f"[ERROR] 進捗更新エラー: {ex}")
+
 
         # ===== STEP 4: リザルト =====
         with ui.step("リザルト", icon="check_circle"):

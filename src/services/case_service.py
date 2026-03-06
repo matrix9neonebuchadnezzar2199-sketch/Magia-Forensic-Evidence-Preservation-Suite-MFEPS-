@@ -37,6 +37,31 @@ class CaseService:
         finally:
             session.close()
 
+    def get_or_create_case(self, case_number: str, case_name: str = "") -> str:
+        """案件番号からIDを取得。存在しない場合は自動作成してIDを返す"""
+        session = get_session()
+        try:
+            case = session.query(Case).filter_by(case_number=case_number).first()
+            if case:
+                return case.id
+            
+            # 作成
+            case = Case(
+                id=str(uuid.uuid4()),
+                case_number=case_number,
+                case_name=case_name or f"案件 {case_number}",
+            )
+            session.add(case)
+            session.commit()
+            logger.info(f"案件自動作成: {case_number}")
+            return case.id
+        except Exception as e:
+            session.rollback()
+            logger.error(f"案件自動作成失敗: {e}")
+            raise
+        finally:
+            session.close()
+
     def get_all_cases(self) -> list[dict]:
         session = get_session()
         try:
@@ -112,6 +137,38 @@ class EvidenceService:
         except Exception as e:
             session.rollback()
             logger.error(f"証拠品作成失敗: {e}")
+            raise
+        finally:
+            session.close()
+
+    def get_or_create_evidence(self, case_id: str, evidence_number: str,
+                               media_type: str = "", device_model: str = "",
+                               device_serial: str = "", capacity_bytes: int = 0) -> str:
+        """証拠品番号からIDを取得。存在しない場合は自動作成してIDを返す"""
+        session = get_session()
+        try:
+            ev = session.query(EvidenceItem).filter_by(
+                case_id=case_id, evidence_number=evidence_number).first()
+            if ev:
+                return ev.id
+            
+            # 作成
+            ev = EvidenceItem(
+                id=str(uuid.uuid4()),
+                case_id=case_id,
+                evidence_number=evidence_number,
+                media_type=media_type,
+                device_model=device_model,
+                device_serial=device_serial,
+                device_capacity_bytes=capacity_bytes,
+            )
+            session.add(ev)
+            session.commit()
+            logger.info(f"証拠品自動作成: {evidence_number}")
+            return ev.id
+        except Exception as e:
+            session.rollback()
+            logger.error(f"証拠品自動作成失敗: {e}")
             raise
         finally:
             session.close()

@@ -1,5 +1,5 @@
-# MFEPS v2.0 Dependencies
-nicegui>=3.0.0
+﻿# MFEPS v2.0 Dependencies
+nicegui>=3.8.0
 sqlalchemy>=2.0
 aiofiles>=23.0
 python-dotenv>=1.0
