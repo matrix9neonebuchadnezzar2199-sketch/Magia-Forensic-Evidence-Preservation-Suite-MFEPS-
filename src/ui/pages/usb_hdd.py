@@ -226,14 +226,15 @@ def _render_device_option(dev: DeviceInfo, state: dict, stepper):
     is_system = dev.is_system_drive
     border_color = "#FF5252" if is_system else "rgba(108, 99, 255, 0.3)"
 
-    with ui.card().classes("q-pa-sm cursor-pointer full-width").style(
-            f"border-left: 3px solid {border_color};"):
+    card = ui.card().classes("q-pa-sm cursor-pointer full-width device-option").style(
+        f"border-left: 3px solid {border_color}; transition: opacity 0.3s ease, border-color 0.3s ease;")
 
+    with card:
         with ui.row().classes("items-center gap-2"):
             if not is_system:
                 radio = ui.radio(
                     options=[dev.device_path],
-                    on_change=lambda e, d=dev: state.update({"selected_device": d})
+                    on_change=lambda e, d=dev, c=card: _on_device_selected(d, c, state)
                 )
             icon = "usb" if "USB" in dev.interface_type.upper() else "storage"
             ui.icon(icon)
@@ -251,3 +252,28 @@ def _render_device_option(dev: DeviceInfo, state: dict, stepper):
 
         if is_system:
             ui.badge("SYSTEM DRIVE — 操作不可", color="negative").props("dense").classes("q-mt-xs q-ml-lg")
+
+
+def _on_device_selected(dev: DeviceInfo, selected_card, state: dict):
+    """デバイス選択時: 選択カードをハイライト、他を薄くする"""
+    state.update({"selected_device": dev})
+
+    # 親コンテナ内の全デバイスカードを取得して制御
+    parent = selected_card.parent_slot.parent
+    for child in parent:
+        if hasattr(child, 'classes'):
+            if child == selected_card:
+                # 選択されたカード: ハイライト
+                child.style(
+                    replace="border-left: 3px solid #6C63FF; "
+                    "opacity: 1; "
+                    "box-shadow: 0 0 12px rgba(108, 99, 255, 0.4); "
+                    "transition: opacity 0.3s ease, border-color 0.3s ease;")
+            else:
+                # 非選択カード: 薄く表示
+                child.style(
+                    replace="border-left: 3px solid rgba(108, 99, 255, 0.1); "
+                    "opacity: 0.4; "
+                    "transition: opacity 0.3s ease, border-color 0.3s ease;")
+
+    ui.notify(f"✅ {dev.model} を選択しました", type="positive", position="bottom", timeout=2000)
