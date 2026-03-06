@@ -57,9 +57,10 @@ def render_hash_comparison(source: dict, verify: dict, match_result: str):
         ui.label("🔍 トリプルハッシュ検証").classes("text-subtitle1 text-weight-bold q-mb-md")
 
         for algo in ["md5", "sha1", "sha256"]:
-            src_val = source.get(algo, "")
-            ver_val = verify.get(algo, "")
+            src_val = source.get(algo, "").lower()
+            ver_val = verify.get(algo, "").lower()
             matched = src_val == ver_val and src_val != ""
+
 
             with ui.card().classes("q-pa-sm q-mb-xs").style(
                     f"border-left: 3px solid {COLOR_SUCCESS if matched else COLOR_ERROR};"):
