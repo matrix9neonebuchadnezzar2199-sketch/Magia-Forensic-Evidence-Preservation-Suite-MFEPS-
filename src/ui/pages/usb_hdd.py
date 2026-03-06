@@ -100,18 +100,17 @@ def build_usb_hdd_page():
                         verify=verify_checkbox.value,
                     )
                     state["job_id"] = job_id
-                    
+
                     # STEP 3 の初期化
                     progress_container.clear()
                     log_area.clear()
                     log_area.push(f"[{job_id}] イメージングジョブを開始しました...")
-                    
-                    # 定期更新タイマー起動
-                    if "timer" in state and state["timer"]:
-                        state["timer"].deactivate()
-                    state["timer"] = ui.timer(1.0, update_progress)
-                    
+
+                    # ★ タイマーを有効化（生成はページ構築時に済み）
+                    progress_timer.active = True
+
                     stepper.next()
+
 
                 ui.button("▶️ コピー開始 →", on_click=start_copy,
                          color="primary").props("unelevated")
@@ -136,16 +135,14 @@ def build_usb_hdd_page():
             with ui.stepper_navigation():
                 btn_next = ui.button("結果を確認 →", on_click=stepper.next,
                          color="primary").props("unelevated")
-                btn_next.disable() # コピー完了まで無効化
+                btn_next.disable()
 
+            # ★ update_progress をここで定義（ページ構築スコープ内）
             def update_progress():
-
-                print(f"[TIMER] tick job_id={state.get('job_id')}")
                 if not state.get("job_id"):
                     return
 
                 try:
-
                     service = get_imaging_service()
                     progress = service.get_progress(state["job_id"])
                     status = progress.get("status", "unknown")
@@ -155,9 +152,7 @@ def build_usb_hdd_page():
                         render_progress_panel(progress)
 
                     if status in ["completed", "failed", "cancelled"]:
-                        if "timer" in state and state["timer"]:
-                            state["timer"].deactivate()
-                            state["timer"] = None
+                        progress_timer.active = False  # ★ 変更
                         state["result"] = progress
                         btn_next.enable()
 
@@ -176,6 +171,10 @@ def build_usb_hdd_page():
                     print(f"[UPDATE_PROGRESS ERROR] {ex}")
                     traceback.print_exc()
                     log_area.push(f"[ERROR] 進捗更新エラー: {ex}")
+
+            # ★ タイマーをページ構築スコープで登録（初期状態OFF）
+            progress_timer = ui.timer(1.0, update_progress, active=False)
+
 
 
         # ===== STEP 4: リザルト =====
