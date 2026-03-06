@@ -18,6 +18,7 @@ def build_usb_hdd_page():
     """USB/HDDイメージング ウィザード"""
     ui.label("💾 USB・HDD イメージング").classes("text-h5 text-weight-bold q-mb-md")
 
+
     # 状態管理
     state = {
         "selected_device": None,
@@ -107,6 +108,7 @@ def build_usb_hdd_page():
                     log_area.push(f"[{job_id}] イメージングジョブを開始しました...")
 
                     # ★ タイマーを有効化（生成はページ構築時に済み）
+                    print(f"[DEBUG] activating progress_timer now")
                     progress_timer.active = True
 
                     stepper.next()
@@ -139,6 +141,7 @@ def build_usb_hdd_page():
 
             # ★ update_progress をここで定義（ページ構築スコープ内）
             def update_progress():
+                print(f"[TIMER] tick job_id={state.get('job_id')}")
                 if not state.get("job_id"):
                     return
 
@@ -152,9 +155,11 @@ def build_usb_hdd_page():
                         render_progress_panel(progress)
 
                     if status in ["completed", "failed", "cancelled"]:
-                        progress_timer.active = False  # ★ 変更
+                        progress_timer.active = False
+                        print(f"[TIMER] stopped — status={status}")
                         state["result"] = progress
                         btn_next.enable()
+                        build_result_page()
 
                         if status == "completed":
                             log_area.push("✅ イメージングが正常に完了しました")
@@ -201,7 +206,6 @@ def build_usb_hdd_page():
                             
                         # エラーセクタ
                         if res.get("error_count", 0) > 0:
-                            # 実際のエラーリストを渡す
                             render_error_panel([]) 
                     else:
                         ui.label(f"ジョブが正常に完了しませんでした ({res.get('status', 'unknown')})").classes("text-body1 text-negative")

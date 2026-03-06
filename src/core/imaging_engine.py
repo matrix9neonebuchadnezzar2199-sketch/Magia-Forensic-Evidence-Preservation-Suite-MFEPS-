@@ -204,16 +204,21 @@ class ImagingEngine:
                 self._progress["status"] = "verifying"
                 logger.info("イメージ検証（再ハッシュ）開始...")
 
-                verify_result = verify_image_hash(
-                    output_path, result.source_hashes,
-                    buffer_size=job.buffer_size,
-                    progress_callback=lambda p, t: self._progress.update(
-                        {"copied_bytes": p, "total_bytes": t}),
+                verify_result = await asyncio.get_event_loop().run_in_executor(
+                    None,
+                    lambda: verify_image_hash(
+                        output_path, result.source_hashes,
+                        buffer_size=job.buffer_size,
+                        progress_callback=lambda p, t: self._progress.update(
+                            {"copied_bytes": p, "total_bytes": t}),
+                    ),
                 )
 
                 result.verify_hashes = verify_result["computed"]
                 result.match_result = (
                     "matched" if verify_result["all_match"] else "mismatched")
+
+
 
                 if verify_result["all_match"]:
                     logger.info("✅ イメージ検証: 全ハッシュ一致")
