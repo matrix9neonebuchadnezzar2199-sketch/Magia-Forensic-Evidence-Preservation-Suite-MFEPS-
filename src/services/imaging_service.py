@@ -163,6 +163,9 @@ class ImagingService:
                 job = session.get(ImagingJob, result.job_id)
                 if job:
                     job.status = result.status
+                    # total_bytes は UI/報告書で参照されるため、DB作成時の WMI 値ではなく
+                    # エンジンが取得した Win32 IOCTL 値で統一する
+                    job.total_bytes = result.total_bytes
                     job.copied_bytes = result.copied_bytes
                     job.error_count = result.error_count
                     job.completed_at = datetime.now(timezone.utc)

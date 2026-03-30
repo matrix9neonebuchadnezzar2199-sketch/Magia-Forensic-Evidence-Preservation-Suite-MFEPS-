@@ -32,13 +32,34 @@ def build_audit_page():
     with ui.row().classes("gap-2 q-mb-md items-end"):
         level_filter = ui.select(
             options=["すべて", "INFO", "WARN", "ERROR", "CRITICAL"],
-            value="すべて", label="レベル",
+            value="すべて",
+            label="レベル",
         ).classes("min-w-32")
         category_filter = ui.select(
             options=["すべて", "system", "imaging", "hash", "coc", "auth", "config"],
-            value="すべて", label="カテゴリ",
+            value="すべて",
+            label="カテゴリ",
         ).classes("min-w-32")
-        ui.button("🔄 更新", icon="refresh").props("outline")
+
+        def refresh_table():
+            level = (
+                level_filter.value
+                if level_filter.value != "すべて"
+                else None
+            )
+            category = (
+                category_filter.value
+                if category_filter.value != "すべて"
+                else None
+            )
+            new_entries = audit_svc.get_entries(
+                limit=100, level=level, category=category
+            )
+            log_table.rows = new_entries
+            log_table.update()
+            ui.notify(f"{len(new_entries)} 件を表示", type="info")
+
+        ui.button("🔄 更新", icon="refresh", on_click=refresh_table).props("outline")
 
     # ログテーブル
     columns = [
@@ -51,10 +72,19 @@ def build_audit_page():
 
     entries = audit_svc.get_entries(limit=100)
 
-    ui.table(columns=columns, rows=entries, row_key="id").classes(
-        "full-width").props("flat bordered dense")
+    log_table = ui.table(columns=columns, rows=entries, row_key="id").classes(
+        "full-width"
+    ).props("flat bordered dense")
 
     # エクスポート
     with ui.row().classes("gap-2 q-mt-md"):
-        ui.button("📥 JSON エクスポート").props("outline")
-        ui.button("📥 CSV エクスポート").props("outline")
+        def export_json():
+            data = audit_svc.export_log(format="json")
+            ui.download(data.encode("utf-8"), filename="audit_log.json")
+
+        def export_csv():
+            data = audit_svc.export_log(format="csv")
+            ui.download(data.encode("utf-8"), filename="audit_log.csv")
+
+        ui.button("📥 JSON エクスポート", on_click=export_json).props("outline")
+        ui.button("📥 CSV エクスポート", on_click=export_csv).props("outline")

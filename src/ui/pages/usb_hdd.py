@@ -302,11 +302,65 @@ def build_usb_hdd_page():
                 "text-caption text-grey-6")
 
             with ui.row().classes("gap-2 q-mt-lg"):
-                ui.button("📄 報告書PDF", icon="picture_as_pdf", color="primary").props(
-                    "unelevated")
-                ui.button("📋 CoC追加", icon="link").props("outline")
-                ui.button("🏠 ダッシュボード", icon="dashboard",
-                         on_click=lambda: ui.navigate.to("/")).props("outline")
+                async def generate_pdf():
+                    if not state.get("job_id"):
+                        ui.notify("ジョブIDがありません", type="warning")
+                        return
+                    try:
+                        from src.services.report_service import ReportService
+
+                        svc = ReportService()
+                        pdf_path = svc.generate_pdf(state["job_id"])
+                        ui.notify(
+                            f"PDF 報告書を生成しました: {pdf_path}",
+                            type="positive",
+                        )
+                    except Exception as e:
+                        ui.notify(f"PDF 生成失敗: {e}", type="negative")
+
+                async def add_coc_entry():
+                    if not state.get("job_id"):
+                        ui.notify("ジョブIDがありません", type="warning")
+                        return
+                    try:
+                        from src.models.database import session_scope
+                        from src.models.schema import ImagingJob
+                        from src.services.coc_service import CoCService
+
+                        with session_scope() as session:
+                            job = session.get(ImagingJob, state["job_id"])
+                            if not job:
+                                ui.notify("ジョブが見つかりません", type="negative")
+                                return
+                            evidence_id = job.evidence_id
+
+                        coc_svc = CoCService()
+                        coc_svc.add_entry(
+                            evidence_id=evidence_id,
+                            action="report_reviewed",
+                            actor_name=get_current_actor_name(),
+                            description="USB/HDD イメージング完了後の結果確認",
+                        )
+                        ui.notify("CoC エントリを追加しました", type="positive")
+                    except Exception as e:
+                        ui.notify(f"CoC 追加失敗: {e}", type="negative")
+
+                ui.button(
+                    "📄 報告書PDF",
+                    icon="picture_as_pdf",
+                    color="primary",
+                    on_click=generate_pdf,
+                ).props("unelevated")
+                ui.button(
+                    "📋 CoC追加",
+                    icon="link",
+                    on_click=add_coc_entry,
+                ).props("outline")
+                ui.button(
+                    "🏠 ダッシュボード",
+                    icon="dashboard",
+                    on_click=lambda: ui.navigate.to("/"),
+                ).props("outline")
 
 
 def _render_device_option(dev: DeviceInfo, state: dict, stepper):

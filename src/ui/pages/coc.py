@@ -21,16 +21,17 @@ def build_coc_page():
         ev_svc = EvidenceService()
 
         def on_case_select(e):
-            state["selected_case"] = e.sender.value
-            evs = ev_svc.get_evidence_by_case(e.sender.value)
+            state["selected_case"] = e.value
+            evs = ev_svc.get_evidence_by_case(e.value)
             ev_options = {ev["id"]: ev["evidence_number"] for ev in evs}
             ev_select.options = ev_options
             ev_select.value = None
+            ev_select.update()
             state["selected_evidence"] = None
             render_timeline()
 
         def on_ev_select(e):
-            state["selected_evidence"] = e.sender.value
+            state["selected_evidence"] = e.value
             render_timeline()
 
         if cases:
