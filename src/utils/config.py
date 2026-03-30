@@ -62,6 +62,33 @@ class MFEPSConfig(BaseSettings):
     makemkvcon_path: str = Field(
         default="", description="makemkvcon パス（空の場合は未使用）")
 
+    # E01 (ewfacquire / ewfverify)
+    ewfacquire_path: str = Field(
+        default="",
+        description="ewfacquire.exe のパス（空の場合は E01 出力を無効化）",
+    )
+    ewfverify_path: str = Field(
+        default="",
+        description="ewfverify.exe のパス（空の場合は検証をスキップ）",
+    )
+    e01_segment_size_bytes: int = Field(
+        default=1_500_000_000,
+        ge=1_048_576,
+        description="E01 セグメントファイルサイズ (bytes)",
+    )
+    e01_compression_method: str = Field(
+        default="deflate",
+        description="E01 圧縮方式 (deflate)",
+    )
+    e01_compression_level: str = Field(
+        default="fast",
+        description="E01 圧縮レベル (none / empty-block / fast / best)",
+    )
+    e01_ewf_format: str = Field(
+        default="encase6",
+        description="EWF 出力フォーマット (encase5 / encase6 / encase7)",
+    )
+
     model_config = {
         "env_file": ".env",
         "env_file_encoding": "utf-8",
@@ -106,6 +133,14 @@ class MFEPSConfig(BaseSettings):
     @property
     def libs_dir(self) -> Path:
         return self.base_dir / "libs"
+
+    @property
+    def ewfacquire_available(self) -> bool:
+        return bool(self.ewfacquire_path) and Path(self.ewfacquire_path).is_file()
+
+    @property
+    def ewfverify_available(self) -> bool:
+        return bool(self.ewfverify_path) and Path(self.ewfverify_path).is_file()
 
 
 # シングルトン設定インスタンス

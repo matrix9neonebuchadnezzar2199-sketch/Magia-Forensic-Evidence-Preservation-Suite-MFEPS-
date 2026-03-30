@@ -74,3 +74,63 @@ COLOR_ERROR = "#FF5252"
 COLOR_INFO = "#448AFF"
 COLOR_TEXT_PRIMARY = "#E0E0E0"
 COLOR_TEXT_SECONDARY = "#9E9E9E"
+
+# =====================================================================
+# E01 (ewfacquire) 定数
+# =====================================================================
+
+# セグメント分割サイズ (bytes)
+# encase6 フォーマット: 最大 7.9 EiB, それ以外: 最大 1.9 GiB
+E01_DEFAULT_SEGMENT_SIZE_BYTES = 1_500_000_000  # 1.4 GiB (ewfacquire デフォルト)
+E01_SEGMENT_SIZE_OPTIONS = {
+    "1.4 GiB (デフォルト)": 1_500_000_000,
+    "1.9 GiB (旧形式上限)": 2_040_109_465,
+    "2 GiB": 2_147_483_648,
+    "4 GiB": 4_294_967_296,
+}
+
+# 圧縮: -c は "method:level" 形式
+E01_DEFAULT_COMPRESSION_METHOD = "deflate"
+E01_DEFAULT_COMPRESSION_LEVEL = "fast"
+E01_SUPPORTED_COMPRESSION_METHODS = ["deflate"]
+E01_SUPPORTED_COMPRESSION_LEVELS = ["none", "empty-block", "fast", "best"]
+
+E01_DEFAULT_SECTORS_PER_CHUNK = 64
+E01_DEFAULT_EWF_FORMAT = "encase6"
+E01_DEFAULT_READ_ERROR_RETRIES = 2
+
+E01_PROGRESS_PATTERN = r"at\s+(\d+)%"
+E01_HASH_PATTERN = (
+    r"([A-Z0-9]+)\s+hash\s+calculated\s+over\s+data:\s*([0-9a-fA-F]+)"
+)
+E01_BYTES_PATTERN = r"Written:\s+.*?\((\d+)\s+bytes\)"
+
+EWFVERIFY_STORED_HASH_PATTERN = (
+    r"([A-Z0-9]+)\s+hash\s+stored\s+in\s+file:\s*([0-9a-fA-F]+)"
+)
+EWFVERIFY_COMPUTED_HASH_PATTERN = (
+    r"([A-Z0-9]+)\s+hash\s+calculated\s+over\s+data:\s*([0-9a-fA-F]+)"
+)
+EWFVERIFY_SUCCESS_PATTERN = r"ewfverify:\s+SUCCESS"
+
+# E01 設定画面 UI 選択肢（値 → ラベル）
+E01_COMPRESSION_OPTIONS = {
+    "deflate:fast": "deflate / fast（推奨・高速）",
+    "deflate:best": "deflate / best（最大圧縮）",
+    "deflate:none": "deflate / none（無圧縮）",
+    "deflate:empty-block": "deflate / empty-block（空ブロックのみ圧縮）",
+}
+
+E01_SEGMENT_SIZE_OPTIONS_UI = {
+    "1500000000": "1.4 GiB（デフォルト）",
+    "2040109465": "1.9 GiB（旧形式上限）",
+    "2147483648": "2 GiB（encase6+）",
+    "4294967296": "4 GiB（encase6+）",
+}
+
+E01_FORMAT_OPTIONS = {
+    "encase5": "EnCase 5 (.E01)  — 最大互換",
+    "encase6": "EnCase 6 (.E01)  — 2GiB超セグメント対応（推奨）",
+    "encase7": "EnCase 7 (.E01)  — 最新",
+    "ewfx": "EWFX (.Ex01)     — 拡張フォーマット",
+}

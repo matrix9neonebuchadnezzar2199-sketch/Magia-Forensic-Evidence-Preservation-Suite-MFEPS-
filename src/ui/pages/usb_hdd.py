@@ -91,6 +91,70 @@ def build_usb_hdd_page():
 
                 verify_checkbox = ui.checkbox("コピー後にハッシュ検証を実行", value=True).classes("q-mt-sm")
 
+                with ui.row().classes("gap-4 items-center q-mt-sm"):
+                    ui.label("出力形式:").classes("text-body2")
+                    format_options = ["RAW (.dd)"]
+                    format_values = ["raw"]
+                    _e01_available = False
+                    try:
+                        from src.core.e01_writer import E01Writer
+
+                        _e01_status = E01Writer.check_available()
+                        _e01_available = _e01_status["ewfacquire_available"]
+                    except Exception:
+                        pass
+
+                    if _e01_available:
+                        format_options.append("E01 (Expert Witness)")
+                        format_values.append("e01")
+
+                    format_select = ui.select(
+                        options={v: l for v, l in zip(format_values, format_options)},
+                        value="raw",
+                    ).classes("min-w-48")
+
+                    if not _e01_available:
+                        ui.label(
+                            "E01 出力を有効にするには .env で EWFACQUIRE_PATH を指定"
+                        ).classes("text-caption text-grey-6")
+
+                e01_panel = ui.column().classes("full-width q-mt-sm")
+                e01_panel.visible = False
+
+                with e01_panel:
+                    with ui.card().classes("q-pa-sm full-width"):
+                        ui.label("E01 設定").classes(
+                            "text-subtitle2 text-weight-bold q-mb-xs"
+                        )
+                        with ui.row().classes("gap-4 items-center"):
+                            ui.label("圧縮:").classes("text-body2")
+                            e01_compression_select = ui.select(
+                                options={
+                                    "deflate:fast": "deflate / fast (推奨)",
+                                    "deflate:best": "deflate / best (高圧縮)",
+                                    "deflate:none": "deflate / none (無圧縮)",
+                                    "deflate:empty-block": "deflate / empty-block",
+                                },
+                                value="deflate:fast",
+                            ).classes("min-w-48")
+
+                        with ui.row().classes("gap-4 items-center q-mt-xs"):
+                            ui.label("鑑識者名:").classes("text-body2")
+                            e01_examiner_input = ui.input(
+                                placeholder="山田太郎"
+                            ).classes("min-w-48")
+
+                        with ui.row().classes("gap-4 items-center q-mt-xs"):
+                            ui.label("説明:").classes("text-body2")
+                            e01_description_input = ui.input(
+                                placeholder="被疑者所有USBメモリ"
+                            ).classes("min-w-48")
+
+                def _on_format_change(_e):
+                    e01_panel.visible = format_select.value == "e01"
+
+                format_select.on_value_change(_on_format_change)
+
                 wb_banner = ui.card().classes("q-pa-sm full-width q-mt-md").style(
                     "border-left: 3px solid #FF9800; display: none;")
                 with wb_banner:
@@ -158,12 +222,29 @@ def build_usb_hdd_page():
                         device=state["selected_device"],
                         case_id=case_val,
                         evidence_id=ev_val,
+                        output_format=format_select.value,
                         verify=verify_checkbox.value,
                         actor_name=get_current_actor_name(),
                         hash_md5=g.get("hash_md5", True),
                         hash_sha1=g.get("hash_sha1", True),
                         hash_sha256=g.get("hash_sha256", True),
                         hash_sha512=g.get("hash_sha512", False),
+                        e01_examiner_name=(
+                            e01_examiner_input.value
+                            if format_select.value == "e01"
+                            else ""
+                        ),
+                        e01_description=(
+                            e01_description_input.value
+                            if format_select.value == "e01"
+                            else ""
+                        ),
+                        e01_notes="",
+                        e01_compression=(
+                            e01_compression_select.value
+                            if format_select.value == "e01"
+                            else ""
+                        ),
                     )
                     state["job_id"] = job_id
 
@@ -228,7 +309,13 @@ def build_usb_hdd_page():
 
                 try:
                     service = get_imaging_service()
-                    progress = service.get_progress(state["job_id"])
+                    progress = dict(service.get_progress(state["job_id"]))
+                    if "e01_percent" in progress:
+                        pct_val = progress.get("e01_percent", 0)
+                        dev = state.get("selected_device")
+                        total_bytes = dev.capacity_bytes if dev else 0
+                        progress["copied_bytes"] = int(total_bytes * pct_val / 100)
+                        progress["total_bytes"] = total_bytes
                     status = progress.get("status", "unknown")
 
                     progress_container.clear()

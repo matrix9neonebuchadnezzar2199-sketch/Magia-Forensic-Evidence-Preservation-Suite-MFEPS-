@@ -33,6 +33,14 @@ Users are responsible for complying with each component's license terms.
   `src/core/aacs_reader.py`. User must provide the DLL and `keydb.cfg`.
   LGPL-2.1 permits dynamic linking from non-GPL software.
 
+### libewf (ewfacquire, ewfverify)
+- **License**: LGPL-3.0-or-later
+- **URL**: https://github.com/libyal/libewf
+- **Usage**: Optional external tool for E01 (Expert Witness Format) output.
+  Not bundled with MFEPS. Users must provide their own copy.
+- **Integration**: Subprocess execution only (`src/core/e01_writer.py`).
+  No linking or embedding.
+
 ## Bundled Python Dependencies (via pip / requirements.txt)
 
 | Package | License | Usage |

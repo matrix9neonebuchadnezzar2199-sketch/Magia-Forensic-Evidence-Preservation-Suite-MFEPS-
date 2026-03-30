@@ -6,9 +6,13 @@ from __future__ import annotations
 from datetime import datetime, timedelta, timezone
 from typing import Any, Optional
 
+import logging
+
 from nicegui import app
 
 from src.utils.config import get_config
+
+logger = logging.getLogger("mfeps.session_auth")
 
 
 def _parse_login_at(raw: Any) -> Optional[datetime]:
@@ -27,7 +31,11 @@ def _parse_login_at(raw: Any) -> Optional[datetime]:
 
 
 def clear_session() -> None:
-    app.storage.user.clear()
+    try:
+        app.storage.user.clear()
+    except OSError as e:
+        # 別プロセスが同じ storage JSON を掴んでいる等（WinError 32）
+        logger.warning("ストレージのクリアに失敗しました（無視して続行）: %s", e)
 
 
 def is_authenticated() -> bool:

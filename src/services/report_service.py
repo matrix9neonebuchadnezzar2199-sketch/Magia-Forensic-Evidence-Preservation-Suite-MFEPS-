@@ -180,6 +180,31 @@ class ReportService:
                 c.drawString(50, y, s)
                 y -= 14
 
+            if data.get("output_format") == "e01":
+                y -= 20
+                if jp == "Helvetica":
+                    c.setFont("Helvetica-Bold", 12)
+                else:
+                    c.setFont(jp, 12)
+                c.drawString(30, y, "■ E01 取得情報")
+                y -= 18
+                c.setFont(jp, 9)
+                e01_lines = [
+                    f"EWF: {data.get('e01_ewf_format', 'N/A')}",
+                    f"圧縮: {data.get('e01_compression', 'N/A')}",
+                    f"セグメント: {data.get('e01_segment_size_bytes', 0):,} bytes × "
+                    f"{data.get('e01_segment_count', 0)}",
+                    f"ewfacquire: {data.get('e01_ewfacquire_version', 'N/A')}",
+                ]
+                for line in e01_lines:
+                    c.drawString(50, y, line)
+                    y -= 12
+                cmd_txt = data.get("e01_command_line", "") or "N/A"
+                if len(cmd_txt) > 120:
+                    cmd_txt = cmd_txt[:117] + "..."
+                c.drawString(50, y, f"cmd: {cmd_txt}")
+                y -= 14
+
             # 書き込み保護方式
             y -= 30
             if jp == "Helvetica":
@@ -294,6 +319,22 @@ th {{ background: #f0f0f0; }}
 </table>
 """
 
+        e01_section = ""
+        if data.get("output_format") == "e01":
+            e01_section = f"""
+<h2>E01 取得情報</h2>
+<table>
+<tr><th>出力形式</th><td>E01 (Expert Witness Compression Format)</td></tr>
+<tr><th>EWF フォーマット</th><td>{data.get('e01_ewf_format', 'N/A')}</td></tr>
+<tr><th>圧縮</th><td>{data.get('e01_compression', 'N/A')}</td></tr>
+<tr><th>セグメントサイズ</th><td>{data.get('e01_segment_size_bytes', 0):,} bytes</td></tr>
+<tr><th>セグメント数</th><td>{data.get('e01_segment_count', 0)}</td></tr>
+<tr><th>使用ツール</th><td>{data.get('e01_ewfacquire_version', 'N/A')}</td></tr>
+<tr><th>実行コマンド</th><td><code style="word-break:break-all;">{data.get('e01_command_line', 'N/A')}</code></td></tr>
+</table>
+"""
+        html += e01_section
+
         wb_method = data.get("write_block_method", "none")
         wb_labels = {
             "both": "ハードウェア + ソフトウェア（最高信頼性）",
@@ -390,4 +431,18 @@ th {{ background: #f0f0f0; }}
                 "avg_speed": job.avg_speed_mbps,
                 "error_count": job.error_count,
                 "write_block_method": job.write_block_method or "none",
+                "output_format": job.output_format or "raw",
+                "e01_compression": getattr(job, "e01_compression", None) or "",
+                "e01_segment_size_bytes": getattr(
+                    job, "e01_segment_size_bytes", None
+                )
+                or 0,
+                "e01_ewf_format": getattr(job, "e01_ewf_format", None) or "",
+                "e01_examiner_name": getattr(job, "e01_examiner_name", None) or "",
+                "e01_segment_count": getattr(job, "e01_segment_count", None) or 0,
+                "e01_ewfacquire_version": getattr(
+                    job, "e01_ewfacquire_version", None
+                )
+                or "",
+                "e01_command_line": getattr(job, "e01_command_line", None) or "",
             }

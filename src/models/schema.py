@@ -106,6 +106,17 @@ class ImagingJob(Base):
     write_block_method = Column(String(20), default="none")  # none / software / hardware / both
     notes = Column(Text, default="")
 
+    # E01 (ewfacquire) — Phase 1
+    e01_compression = Column(String(40), default="")
+    e01_segment_size_bytes = Column(Integer, default=0)
+    e01_ewf_format = Column(String(20), default="")
+    e01_examiner_name = Column(String(200), default="")
+    e01_notes = Column(Text, default="")
+    e01_command_line = Column(Text, default="")
+    e01_ewfacquire_version = Column(String(100), default="")
+    e01_segment_count = Column(Integer, default=0)
+    e01_log_path = Column(String(500), default="")
+
     evidence = relationship("EvidenceItem", back_populates="imaging_jobs")
     hash_records = relationship("HashRecord", back_populates="job", cascade="all, delete-orphan")
 

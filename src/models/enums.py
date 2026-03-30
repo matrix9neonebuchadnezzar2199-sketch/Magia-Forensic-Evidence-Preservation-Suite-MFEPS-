@@ -82,6 +82,7 @@ class CaseStatus(str, Enum):
 
 class OutputFormat(str, Enum):
     RAW = "raw"
+    E01 = "e01"
     ISO = "iso"
 
 

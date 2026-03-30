@@ -11,6 +11,7 @@ MFEPS v2.0 — エントリーポイント
 """
 import ctypes
 import logging
+import os
 import secrets
 import sys
 from pathlib import Path
@@ -19,6 +20,13 @@ from pathlib import Path
 BASE_DIR = Path(__file__).resolve().parent.parent
 if str(BASE_DIR) not in sys.path:
     sys.path.insert(0, str(BASE_DIR))
+
+# NiceGUI のローカルファイルストレージ（既定はリポジトリ直下 .nicegui）。
+# Cursor 等で別プロセスと同じパスを共有すると WinError 32 が発生しうるため、
+# data 配下に隔離する。nicegui.storage の import より前に環境変数を設定すること。
+_ng_storage_dir = (BASE_DIR / "data" / ".nicegui").resolve()
+_ng_storage_dir.mkdir(parents=True, exist_ok=True)
+os.environ.setdefault("NICEGUI_STORAGE_PATH", str(_ng_storage_dir))
 
 from nicegui import ui, app
 

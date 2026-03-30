@@ -91,6 +91,33 @@ def init_database(db_path: Path) -> None:
             e,
         )
 
+    # E01 カラム (Phase 1)
+    e01_new_columns = {
+        "e01_compression": "VARCHAR(40) DEFAULT ''",
+        "e01_segment_size_bytes": "INTEGER DEFAULT 0",
+        "e01_ewf_format": "VARCHAR(20) DEFAULT ''",
+        "e01_examiner_name": "VARCHAR(200) DEFAULT ''",
+        "e01_notes": "TEXT DEFAULT ''",
+        "e01_command_line": "TEXT DEFAULT ''",
+        "e01_ewfacquire_version": "VARCHAR(100) DEFAULT ''",
+        "e01_segment_count": "INTEGER DEFAULT 0",
+        "e01_log_path": "VARCHAR(500) DEFAULT ''",
+    }
+    with _engine.connect() as conn:
+        rows = conn.execute(text("PRAGMA table_info(imaging_jobs)")).fetchall()
+        col_names = {r[1] for r in rows}
+        for col_name, col_def in e01_new_columns.items():
+            if col_name not in col_names:
+                conn.execute(
+                    text(
+                        f"ALTER TABLE imaging_jobs ADD COLUMN {col_name} {col_def}"
+                    )
+                )
+                logger.info(
+                    "マイグレーション: imaging_jobs.%s を追加しました", col_name
+                )
+        conn.commit()
+
     _session_factory = sessionmaker(bind=_engine, expire_on_commit=False)
 
     logger.info(f"データベース初期化完了: {db_path}")

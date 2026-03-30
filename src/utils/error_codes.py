@@ -6,6 +6,7 @@ E3xxx: イメージングエラー
 E4xxx: 光学メディアエラー
 E5xxx: ハッシュエラー
 E6xxx: 報告書エラー
+E7xxx: E01 出力エラー
 """
 from enum import Enum
 
@@ -160,6 +161,32 @@ E6002 = ErrorCode(
     "PDF 生成に失敗しました", Severity.ERROR,
     "ReportLab が正しくインストールされているか確認してください")
 
+# ───── E7xxx: E01 出力エラー ─────
+E7001 = ErrorCode(
+    "E7001", "ewfacquire not found",
+    "ewfacquire.exe が見つかりません", Severity.ERROR,
+    "設定画面で ewfacquire_path を指定するか、libs/ に配置してください")
+E7002 = ErrorCode(
+    "E7002", "ewfacquire process failed",
+    "ewfacquire プロセスが異常終了しました", Severity.ERROR,
+    "ewfacquire のエラーログを確認してください")
+E7003 = ErrorCode(
+    "E7003", "E01 segment files not created",
+    "E01 セグメントファイルが生成されませんでした", Severity.ERROR,
+    "出力先パスと空き容量を確認してください")
+E7004 = ErrorCode(
+    "E7004", "E01 verification failed",
+    "E01 イメージの検証に失敗しました", Severity.CRITICAL,
+    "ソースとイメージのハッシュが一致しません。再取得を推奨します")
+E7005 = ErrorCode(
+    "E7005", "ewfacquire timeout",
+    "ewfacquire がタイムアウトしました", Severity.ERROR,
+    "デバイスの接続状態を確認してください")
+E7006 = ErrorCode(
+    "E7006", "ewfverify not available",
+    "ewfverify が利用できないため検証をスキップしました", Severity.WARN,
+    "ewfverify_path を設定すると自動検証が有効になります")
+
 # 全エラーコードの辞書
 ALL_ERROR_CODES: dict[str, ErrorCode] = {
     ec.code: ec for ec in [
@@ -169,6 +196,7 @@ ALL_ERROR_CODES: dict[str, ErrorCode] = {
         E4001, E4002, E4003, E4004, E4005, E4006,
         E5001, E5002, E5003,
         E6001, E6002,
+        E7001, E7002, E7003, E7004, E7005, E7006,
     ]
 }
 

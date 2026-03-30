@@ -40,6 +40,9 @@ class ImagingJobParams(BaseModel):
     hash_sha1: bool = True
     hash_sha256: bool = True
     hash_sha512: bool = False
+    # UI 表示用（E01 メタデータ等）。case_id / evidence_id は UUID
+    case_number_str: str = ""
+    evidence_number_str: str = ""
 
 
 class ImagingResult(BaseModel):

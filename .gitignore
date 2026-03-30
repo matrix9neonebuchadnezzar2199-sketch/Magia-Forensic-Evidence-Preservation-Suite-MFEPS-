@@ -41,3 +41,6 @@ desktop.ini
 
 # NiceGUI
 .nicegui/
+
+libs/*.exe
+libs/*.dll
