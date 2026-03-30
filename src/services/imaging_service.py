@@ -3,6 +3,7 @@ MFEPS v2.0 — イメージング統合サービス
 UIとイメージングエンジンを仲介するオーケストレータ
 """
 import asyncio
+import json
 import logging
 import uuid
 from datetime import datetime, timezone
@@ -12,7 +13,7 @@ from src.core.imaging_engine import ImagingEngine, ImagingJobParams, ImagingResu
 from src.core.device_detector import DeviceInfo
 from src.core.write_blocker import check_write_protection
 from src.models.database import session_scope
-from src.models.schema import ImagingJob, HashRecord, ChainOfCustody, AuditLog
+from src.models.schema import ImagingJob, HashRecord, ChainOfCustody
 from src.utils.config import get_config
 from src.utils.path_sanitize import sanitize_path_component
 
@@ -202,7 +203,9 @@ class ImagingService:
                         description=f"イメージング {result.status}: "
                                     f"{result.copied_bytes} bytes, "
                                     f"{result.elapsed_seconds}s",
-                        hash_snapshot=str(result.source_hashes),
+                        hash_snapshot=json.dumps(
+                            result.source_hashes, ensure_ascii=False
+                        ),
                     )
                     session.add(coc)
 

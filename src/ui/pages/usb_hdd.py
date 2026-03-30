@@ -2,9 +2,13 @@
 MFEPS v2.0 — USB/HDD ウィザードページ
 4段階ウィザード: ドライブ選択 → プリスキャン → コピー実行 → リザルト
 """
-from nicegui import ui, app
 import asyncio
+import logging
 import uuid
+
+from nicegui import ui, app
+
+logger = logging.getLogger("mfeps.ui.usb_hdd")
 from src.core.device_detector import detect_block_devices, DeviceInfo, format_capacity
 from src.core.write_blocker import check_write_protection, get_protection_badge
 from src.ui.components.progress_panel import (
@@ -46,7 +50,7 @@ def build_usb_hdd_page():
                     state["step1_next_btn"].disable()
                 status_label.text = "🔍 デバイス検出中..."
 
-                devices = await asyncio.get_event_loop().run_in_executor(
+                devices = await asyncio.get_running_loop().run_in_executor(
                     None, detect_block_devices)
 
                 status_label.text = f"✅ {len(devices)} 台のデバイスが検出されました"
@@ -72,8 +76,6 @@ def build_usb_hdd_page():
         with ui.step("プリスキャン・設定", icon="search"):
             ui.label("デバイス情報を確認し、コピー設定を行ってください").classes(
                 "text-body2 text-grey-5 q-mb-md")
-
-            scan_info = ui.column().classes("full-width")
 
             # 設定パネル
             with ui.card().classes("q-pa-md full-width q-mt-md"):
@@ -108,7 +110,7 @@ def build_usb_hdd_page():
             async def check_write_block_status():
                 if not state.get("selected_device"):
                     return
-                wb = await asyncio.get_event_loop().run_in_executor(
+                wb = await asyncio.get_running_loop().run_in_executor(
                     None, check_write_protection, state["selected_device"].device_path)
                 banner = wb_ui.get("banner")
                 title = wb_ui.get("title")
@@ -170,8 +172,7 @@ def build_usb_hdd_page():
                     log_area.clear()
                     log_area.push(f"[{job_id}] イメージングジョブを開始しました...")
 
-                    # ★ タイマーを有効化（生成はページ構築時に済み）
-                    print(f"[DEBUG] activating progress_timer now")
+                    logger.debug("progress_timer を有効化 job_id=%s", job_id)
                     progress_timer.active = True
 
                     stepper.next()
@@ -193,8 +194,25 @@ def build_usb_hdd_page():
                     log_area.push("⚠️ ジョブをキャンセルしました")
                     ui.notify("コピーを中止しました", type="warning")
 
+            async def pause_job():
+                if state.get("job_id"):
+                    await get_imaging_service().pause_imaging(state["job_id"])
+                    log_area.push("⏸ 一時停止しました")
+                    ui.notify("一時停止しました", type="info")
+
+            async def resume_job():
+                if state.get("job_id"):
+                    await get_imaging_service().resume_imaging(state["job_id"])
+                    log_area.push("▶ 再開しました")
+                    ui.notify("再開しました", type="info")
+
             with ui.row().classes("gap-2 q-mt-md"):
-                ui.button("⏸ 一時停止", icon="pause").props("outline")
+                ui.button("⏸ 一時停止", on_click=pause_job, icon="pause").props(
+                    "outline"
+                )
+                ui.button("▶ 再開", on_click=resume_job, icon="play_arrow").props(
+                    "outline"
+                )
                 ui.button("⏹ 中止", on_click=cancel_job, icon="stop", color="negative").props("outline")
 
             with ui.stepper_navigation():
@@ -204,7 +222,7 @@ def build_usb_hdd_page():
 
             # ★ update_progress をここで定義（ページ構築スコープ内）
             def update_progress():
-                print(f"[TIMER] tick job_id={state.get('job_id')}")
+                logger.debug("progress tick job_id=%s", state.get("job_id"))
                 if not state.get("job_id"):
                     return
 
@@ -219,7 +237,7 @@ def build_usb_hdd_page():
 
                     if status in ["completed", "failed", "cancelled"]:
                         progress_timer.active = False
-                        print(f"[TIMER] stopped — status={status}")
+                        logger.debug("progress_timer 停止 status=%s", status)
                         state["result"] = progress
                         btn_next.enable()
                         build_result_page()
@@ -236,7 +254,8 @@ def build_usb_hdd_page():
 
                 except Exception as ex:
                     import traceback
-                    print(f"[UPDATE_PROGRESS ERROR] {ex}")
+
+                    logger.exception("進捗更新エラー: %s", ex)
                     traceback.print_exc()
                     log_area.push(f"[ERROR] 進捗更新エラー: {ex}")
 

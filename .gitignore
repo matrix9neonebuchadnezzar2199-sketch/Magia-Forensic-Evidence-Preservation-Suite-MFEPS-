@@ -14,6 +14,9 @@ runtime/
 # 環境変数
 .env
 
+# NiceGUI storage 署名鍵（リポジトリに含めない）
+.storage_secret
+
 # データ・ログ (ポータブル実行時に生成)
 data/
 logs/

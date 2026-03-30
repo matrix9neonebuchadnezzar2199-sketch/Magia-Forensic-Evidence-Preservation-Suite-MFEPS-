@@ -2,8 +2,9 @@
 MFEPS v2.0 — 光学メディア (CD/DVD/BD) ウィザードページ
 4段階ウィザード + コピーガード解析結果表示
 """
-from nicegui import ui, app
 import asyncio
+
+from nicegui import ui, app
 
 from src.core.device_detector import detect_optical_drives, OpticalDriveInfo
 from src.core.optical_engine import OpticalMediaAnalyzer
@@ -45,7 +46,7 @@ def build_optical_page():
             async def refresh_drives():
                 drive_container.clear()
                 status_label.text = "🔍 ドライブ検出中..."
-                drives = await asyncio.get_event_loop().run_in_executor(
+                drives = await asyncio.get_running_loop().run_in_executor(
                     None, detect_optical_drives)
                 status_label.text = f"✅ {len(drives)} 台のドライブが検出されました"
 
@@ -84,12 +85,12 @@ def build_optical_page():
                         
                     analyzer = OpticalMediaAnalyzer()
                     drive_path = state["selected_drive"].device_path
-                    analysis = await asyncio.get_event_loop().run_in_executor(
+                    analysis = await asyncio.get_running_loop().run_in_executor(
                         None, analyzer.analyze, drive_path)
                     state["analysis"] = analysis
                     
                     guard_analyzer = CopyGuardAnalyzer()
-                    guard_result = await asyncio.get_event_loop().run_in_executor(
+                    guard_result = await asyncio.get_running_loop().run_in_executor(
                         None, guard_analyzer.analyze, drive_path, analysis)
                     state["guard_result"] = guard_result
                     
@@ -202,8 +203,25 @@ def build_optical_page():
                     await get_optical_service().cancel_imaging(state["job_id"])
                     log_area.push("⚠️ ジョブをキャンセルしました")
 
+            async def pause_job():
+                if state.get("job_id"):
+                    from src.services.optical_service import get_optical_service
+                    await get_optical_service().pause_imaging(state["job_id"])
+                    log_area.push("⏸ 一時停止しました")
+
+            async def resume_job():
+                if state.get("job_id"):
+                    from src.services.optical_service import get_optical_service
+                    await get_optical_service().resume_imaging(state["job_id"])
+                    log_area.push("▶ 再開しました")
+
             with ui.row().classes("gap-2 q-mt-md"):
-                ui.button("⏸ 一時停止").props("outline")
+                ui.button("⏸ 一時停止", on_click=pause_job, icon="pause").props(
+                    "outline"
+                )
+                ui.button("▶ 再開", on_click=resume_job, icon="play_arrow").props(
+                    "outline"
+                )
                 ui.button("⏹ 中止", on_click=cancel_job, color="negative").props("outline")
 
             with ui.stepper_navigation():
@@ -301,9 +319,14 @@ def render_copy_guard_badges(protections: list[ProtectionInfo]):
                 color = "grey"
                 icon = "radio_button_unchecked"
 
+            type_label = str(
+                getattr(prot.type, "value", prot.type)
+            ).upper()
+
             with ui.row().classes("items-center gap-2 q-mb-xs"):
                 status = "🔴" if prot.detected and not prot.can_decrypt else (
                     "🟡" if prot.detected else "🟢")
                 ui.label(status)
-                ui.label(prot.type.upper()).classes("text-weight-bold text-body2")
+                ui.icon(icon, color=color, size="sm")
+                ui.label(type_label).classes("text-weight-bold text-body2")
                 ui.label(prot.details).classes("text-caption text-grey-5")

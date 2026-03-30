@@ -6,6 +6,8 @@ import uuid
 from datetime import datetime, timezone
 from typing import Optional
 
+from sqlalchemy.exc import IntegrityError
+
 from src.models.database import session_scope
 from src.models.schema import Case, EvidenceItem
 
@@ -47,8 +49,15 @@ class CaseService:
                     case_name=case_name or f"案件 {case_number}",
                 )
                 session.add(case)
+                session.flush()
                 logger.info(f"案件自動作成: {case_number}")
                 return case.id
+        except IntegrityError:
+            with session_scope() as session:
+                case = session.query(Case).filter_by(case_number=case_number).first()
+                if case:
+                    return case.id
+            raise
         except Exception as e:
             logger.error(f"案件自動作成失敗: {e}")
             raise
@@ -139,8 +148,17 @@ class EvidenceService:
                     device_capacity_bytes=capacity_bytes,
                 )
                 session.add(ev)
+                session.flush()
                 logger.info(f"証拠品自動作成: {evidence_number}")
                 return ev.id
+        except IntegrityError:
+            with session_scope() as session:
+                ev = session.query(EvidenceItem).filter_by(
+                    case_id=case_id, evidence_number=evidence_number
+                ).first()
+                if ev:
+                    return ev.id
+            raise
         except Exception as e:
             logger.error(f"証拠品自動作成失敗: {e}")
             raise

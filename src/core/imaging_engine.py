@@ -7,6 +7,8 @@ import json
 import logging
 import os
 import time
+
+import psutil
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Callable, Optional
@@ -115,7 +117,6 @@ class ImagingEngine:
             result.output_path = str(output_path)
 
             # 出力先容量チェック
-            import psutil
             disk_usage = psutil.disk_usage(str(output_dir))
             if disk_usage.free < total_bytes * 1.01:
                 result.status = "failed"

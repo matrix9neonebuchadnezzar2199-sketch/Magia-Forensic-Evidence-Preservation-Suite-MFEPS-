@@ -12,7 +12,7 @@ from src.utils.constants import (
     FILE_FLAG_NO_BUFFERING, FILE_FLAG_SEQUENTIAL_SCAN, INVALID_HANDLE_VALUE,
     IOCTL_DISK_GET_DRIVE_GEOMETRY, IOCTL_DISK_GET_LENGTH_INFO,
     IOCTL_DISK_IS_WRITABLE,
-    IOCTL_CDROM_READ_TOC_EX, IOCTL_CDROM_RAW_READ,
+    IOCTL_CDROM_READ_TOC, IOCTL_CDROM_READ_TOC_EX, IOCTL_CDROM_RAW_READ,
     IOCTL_SCSI_PASS_THROUGH_DIRECT,
 )
 from src.utils.error_codes import E2003, E2004, E3001
@@ -184,8 +184,15 @@ def read_sectors(handle: int, offset: int, size: int,
     new_pos = ctypes.c_longlong(0)
     kernel32.SetFilePointerEx(handle, li, ctypes.byref(new_pos), 0)
 
-    # バッファ確保
+    # バッファ確保（事前確保バッファは size 以下であること）
     if buffer is None:
+        buffer = ctypes.create_string_buffer(size)
+    elif ctypes.sizeof(buffer) < size:
+        logger.debug(
+            "read_sectors: バッファ不足 sizeof=%s need=%s — 新規確保",
+            ctypes.sizeof(buffer),
+            size,
+        )
         buffer = ctypes.create_string_buffer(size)
 
     bytes_read = wintypes.DWORD(0)
@@ -220,7 +227,7 @@ def read_cdrom_toc(handle: int) -> dict:
         # フォールバック: 通常 TOC 読取
         success = kernel32.DeviceIoControl(
             handle,
-            0x00024000,  # IOCTL_CDROM_READ_TOC
+            IOCTL_CDROM_READ_TOC,
             None, 0,
             ctypes.byref(toc), ctypes.sizeof(toc),
             ctypes.byref(bytes_returned),
@@ -231,7 +238,8 @@ def read_cdrom_toc(handle: int) -> dict:
             raise OSError(f"TOC 読取失敗 (Win32 Error: {error_code})")
 
     tracks = []
-    for i in range(toc.LastTrack - toc.FirstTrack + 1):
+    n_data = toc.LastTrack - toc.FirstTrack + 1
+    for i in range(n_data):
         td = toc.TrackData[i]
         addr = (td.Address[0] << 24 | td.Address[1] << 16 |
                 td.Address[2] << 8 | td.Address[3])
@@ -243,10 +251,24 @@ def read_cdrom_toc(handle: int) -> dict:
             "is_data": bool((td.Control_Adr >> 4) & 0x04),
         })
 
+    # リードアウト（トラック 0xAA）— MS CDROM_TOC では LastTrack の次エントリ
+    leadout_idx = n_data
+    if leadout_idx < 100:
+        td = toc.TrackData[leadout_idx]
+        addr = (td.Address[0] << 24 | td.Address[1] << 16 |
+                td.Address[2] << 8 | td.Address[3])
+        tracks.append({
+            "track_number": 0xAA,
+            "control": td.Control_Adr >> 4,
+            "adr": td.Control_Adr & 0x0F,
+            "address_lba": addr,
+            "is_data": True,
+        })
+
     result = {
         "first_track": toc.FirstTrack,
         "last_track": toc.LastTrack,
-        "track_count": toc.LastTrack - toc.FirstTrack + 1,
+        "track_count": len(tracks),
         "tracks": tracks,
     }
     logger.debug(f"TOC: {result['track_count']} tracks")

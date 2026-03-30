@@ -96,11 +96,12 @@ class OpticalMediaAnalyzer:
                 length_bytes = 0
 
             if result.capacity_bytes <= 0 and result.tracks:
-                # フォールバック: 最終トラック開始 LBA 以降をざっくり見積もり
-                # （最終トラック長 + リードアウトを含まないため下限寄りになり得る）
-                max_lba = max(t.address_lba for t in result.tracks)
-                leadout_margin = 6750 * 75  # 約 9 分相当 @ 75セクタ/秒（CD の目安）
-                result.sector_count = max_lba + max(leadout_margin, 32768)
+                leadout = [t for t in result.tracks if t.track_number == 0xAA]
+                if leadout:
+                    result.sector_count = leadout[0].address_lba
+                else:
+                    max_lba = max(t.address_lba for t in result.tracks)
+                    result.sector_count = max_lba + 32768
                 result.capacity_bytes = result.sector_count * result.sector_size
 
             # ファイルシステム判定

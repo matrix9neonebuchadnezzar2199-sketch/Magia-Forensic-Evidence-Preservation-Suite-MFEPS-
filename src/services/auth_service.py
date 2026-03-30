@@ -55,9 +55,18 @@ class AuthService:
                 "role": user.role,
             }
 
-    def get_user_by_id(self, user_id: str) -> Optional[User]:
+    def get_user_by_id(self, user_id: str) -> Optional[dict[str, Any]]:
+        """セッション外で安全に使えるプレーン dict を返す（ORM は返さない）"""
         with session_scope() as session:
-            return session.query(User).filter(User.id == user_id).first()
+            user = session.query(User).filter(User.id == user_id).first()
+            if not user:
+                return None
+            return {
+                "id": user.id,
+                "username": user.username,
+                "display_name": user.display_name or user.username,
+                "role": user.role,
+            }
 
 
 _auth_service: Optional[AuthService] = None

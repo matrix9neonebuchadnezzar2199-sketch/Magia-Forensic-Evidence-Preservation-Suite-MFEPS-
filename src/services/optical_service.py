@@ -1,6 +1,7 @@
 import asyncio
 import json
 import logging
+import time
 import uuid
 from datetime import datetime, timezone
 from typing import Optional
@@ -107,15 +108,31 @@ class OpticalService:
             "error_count": 0,
             "current_file": drive_path
         }
-        
+
+        prog_state = {"last_ts": time.time(), "last_bytes": 0}
+        total_cap = analysis.capacity_bytes or 1
+
         def progress_cb(info):
             copied = info.get("copied_bytes", 0)
             status = self._progress[job_id].get("status", "imaging")
             self._progress[job_id].update(info)
             self._progress[job_id]["status"] = status
-            
-            # 簡易的な速度・ETA計算
-            pass # (This can be refined, but for now we rely on the object state)
+            now = time.time()
+            dt = now - prog_state["last_ts"]
+            if dt >= 0.5:
+                speed = (
+                    (copied - prog_state["last_bytes"]) / dt / (1024 * 1024)
+                    if dt > 0
+                    else 0.0
+                )
+                remaining = max(0, total_cap - copied)
+                eta = (
+                    remaining / (speed * 1024 * 1024) if speed > 0 else 0.0
+                )
+                self._progress[job_id]["speed_mibps"] = round(speed, 1)
+                self._progress[job_id]["eta_seconds"] = round(eta, 0)
+                prog_state["last_ts"] = now
+                prog_state["last_bytes"] = copied
 
         # 非同期タスク起動
         task = asyncio.create_task(
@@ -189,9 +206,7 @@ class OpticalService:
                 "status": status,
                 "source_hashes": result_dict.get("source_hashes", {}),
                 "verify_hashes": {},
-                "match_result": (
-                    "matched" if status == "completed" else "failed"
-                ),
+                "match_result": "pending",
                 "error_count": result_dict.get("error_count", 0),
                 "error_sectors": result_dict.get("error_sectors", []),
                 "decrypt_method": decrypt_method,
@@ -252,7 +267,10 @@ class OpticalService:
                                 f"光学イメージング {status}: {copied_bytes} bytes"
                                 f"{decrypt_note}"
                             ),
-                            hash_snapshot=str(result_dict.get("source_hashes")),
+                            hash_snapshot=json.dumps(
+                            result_dict.get("source_hashes") or {},
+                            ensure_ascii=False,
+                        ),
                         )
                         session.add(coc)
             except Exception as db_e:

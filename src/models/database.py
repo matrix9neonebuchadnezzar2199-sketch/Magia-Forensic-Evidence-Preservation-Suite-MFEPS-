@@ -72,6 +72,25 @@ def init_database(db_path: Path) -> None:
             conn.commit()
             logger.info("マイグレーション: hash_records.sha512 を追加しました")
 
+    # (case_id, evidence_number) 一意 — TOCTOU 対策（重複行があると失敗する）
+    try:
+        with _engine.connect() as conn:
+            conn.execute(
+                text(
+                    "CREATE UNIQUE INDEX IF NOT EXISTS uq_evidence_case_number "
+                    "ON evidence_items (case_id, evidence_number)"
+                )
+            )
+            conn.commit()
+            logger.info(
+                "マイグレーション: evidence_items.uq_evidence_case_number を確認しました"
+            )
+    except Exception as e:
+        logger.warning(
+            "evidence_items 一意インデックスを作成できませんでした: %s",
+            e,
+        )
+
     _session_factory = sessionmaker(bind=_engine, expire_on_commit=False)
 
     logger.info(f"データベース初期化完了: {db_path}")

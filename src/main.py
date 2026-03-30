@@ -1,10 +1,13 @@
 """
 MFEPS v2.0 — エントリーポイント
-1. フォルダ構造確保
-2. 設定読込
-3. DB初期化
-4. 管理者権限チェック
-5. NiceGUI起動
+1. 設定読込
+2. フォルダ構造確保
+3. ロギング初期化
+4. DB 初期化・初回管理者
+5. 管理者権限チェック
+6. Storage（on_startup）
+7. ページルーティング
+8. NiceGUI 起動
 """
 import ctypes
 import logging
@@ -83,7 +86,7 @@ def main():
     else:
         logger.warning("管理者権限: ⚠️ 未取得 — デバイスアクセスが制限されます")
 
-    # 7. Storage 初期化を startup イベント内で実行
+    # 6. Storage 初期化を startup イベント内で実行
     _admin = admin
 
     @app.on_startup
@@ -92,7 +95,7 @@ def main():
         app.storage.general["disk_free"] = ""
         app.storage.general["is_admin"] = _admin
 
-    # 8. ページルーティング
+    # 7. ページルーティング
     @ui.page("/login")
     def page_login():
         build_login_page()
@@ -132,10 +135,10 @@ def main():
     def page_audit():
         create_layout(build_audit_page)
 
-    # 9. 法的免責ダイアログは各ページの layout 内で表示
+    # 法的免責ダイアログは各ページの layout 内で表示
     # (on_connect は NiceGUI 3.x では UI 要素の操作に制限あり)
 
-    # 10. NiceGUI 起動
+    # 8. NiceGUI 起動
     logger.info(
         f"WebUI を {config.bind_address}:{config.mfeps_port} で起動します..."
     )
