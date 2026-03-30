@@ -44,8 +44,10 @@ def render_hash_display(hashes: dict, label: str = "ハッシュ値"):
     """トリプルハッシュ表示"""
     with ui.card().classes("q-pa-md full-width"):
         ui.label(label).classes("text-subtitle2 text-weight-bold q-mb-sm")
-        for algo in ["md5", "sha1", "sha256"]:
+        for algo in ["md5", "sha1", "sha256", "sha512"]:
             value = hashes.get(algo, "")
+            if not value and algo == "sha512":
+                continue
             with ui.row().classes("items-center gap-2"):
                 ui.badge(algo.upper(), color="primary").props("dense outline")
                 ui.label(value or "計算中...").classes("hash-mono text-body2")
@@ -56,9 +58,11 @@ def render_hash_comparison(source: dict, verify: dict, match_result: str):
     with ui.card().classes("q-pa-md full-width"):
         ui.label("🔍 トリプルハッシュ検証").classes("text-subtitle1 text-weight-bold q-mb-md")
 
-        for algo in ["md5", "sha1", "sha256"]:
+        for algo in ["md5", "sha1", "sha256", "sha512"]:
             src_val = source.get(algo, "").lower()
             ver_val = verify.get(algo, "").lower()
+            if not src_val and not ver_val and algo == "sha512":
+                continue
             matched = src_val == ver_val and src_val != ""
 
 
@@ -86,8 +90,14 @@ def render_hash_comparison(source: dict, verify: dict, match_result: str):
                     "text-subtitle1 text-weight-bold text-negative")
 
 
-def render_error_panel(errors: list[dict]):
-    """エラーセクタパネル"""
+def _error_row_lba(item) -> int:
+    if isinstance(item, dict):
+        return int(item.get("lba", 0))
+    return int(item)
+
+
+def render_error_panel(errors: list, sector_size: int = 512):
+    """エラーセクタパネル（LBA は int または {"lba": n} のリスト）"""
     with ui.card().classes("q-pa-md full-width"):
         ui.label("⚠️ エラーセクタ").classes("text-subtitle2 text-weight-bold q-mb-sm")
 
@@ -100,9 +110,15 @@ def render_error_panel(errors: list[dict]):
             {"name": "offset", "label": "オフセット", "field": "offset", "align": "left"},
             {"name": "action", "label": "処理", "field": "action", "align": "center"},
         ]
-        rows = [
-            {"lba": s, "offset": f"0x{s * 512:X}", "action": "ゼロフィル"}
-            for s in errors
-        ]
+        rows = []
+        for s in errors:
+            lba = _error_row_lba(s)
+            rows.append(
+                {
+                    "lba": lba,
+                    "offset": f"0x{lba * sector_size:X}",
+                    "action": "ゼロフィル",
+                }
+            )
         ui.table(columns=columns, rows=rows, row_key="lba").classes(
             "full-width").props("flat bordered dense")

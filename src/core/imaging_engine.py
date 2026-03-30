@@ -34,6 +34,10 @@ class ImagingJobParams(BaseModel):
     buffer_size: int = 1_048_576
     retry_count: int = 3
     verify_after_copy: bool = True
+    hash_md5: bool = True
+    hash_sha1: bool = True
+    hash_sha256: bool = True
+    hash_sha512: bool = False
 
 
 class ImagingResult(BaseModel):
@@ -128,11 +132,16 @@ class ImagingEngine:
             self._progress["status"] = "imaging"
             buffer_mgr = DoubleBufferManager(
                 buffer_size=job.buffer_size, sector_size=sector_size)
-            hash_engine = TripleHashEngine()
+            hash_engine = TripleHashEngine(
+                md5=job.hash_md5,
+                sha1=job.hash_sha1,
+                sha256=job.hash_sha256,
+                sha512=job.hash_sha512,
+            )
 
-            # 読取関数
-            def _read(offset: int, size: int) -> bytes:
-                return read_sectors(handle, offset, size)
+            # 読取（事前確保バッファで Win32 読取の割り当てを抑止）
+            def _read(offset: int, size: int, buf) -> bytes:
+                return read_sectors(handle, offset, size, buffer=buf)
 
             # 進捗更新関数
             speed_samples = []
@@ -195,30 +204,39 @@ class ImagingEngine:
 
             logger.info(f"コピー完了: {result.copied_bytes} bytes, "
                         f"エラーセクタ: {result.error_count}")
-            logger.info(f"ソースハッシュ: MD5={result.source_hashes['md5']}")
-            logger.info(f"             SHA1={result.source_hashes['sha1']}")
-            logger.info(f"           SHA256={result.source_hashes['sha256']}")
+            for algo, label in (
+                ("md5", "MD5"), ("sha1", "SHA1"),
+                ("sha256", "SHA256"), ("sha512", "SHA512"),
+            ):
+                if algo in result.source_hashes:
+                    logger.info(f"ソースハッシュ {label}={result.source_hashes[algo]}")
 
-            # 7. イメージ検証
-            if job.verify_after_copy:
+            # 7. イメージ検証（キャンセル時は検証をスキップ）
+            if self._cancel_event.is_set():
+                result.status = "cancelled"
+                result.error_code = "E3006"
+                result.error_message = "ユーザーによりキャンセルされました"
+            elif job.verify_after_copy:
                 self._progress["status"] = "verifying"
                 logger.info("イメージ検証（再ハッシュ）開始...")
 
-                verify_result = await asyncio.get_event_loop().run_in_executor(
+                verify_result = await asyncio.get_running_loop().run_in_executor(
                     None,
                     lambda: verify_image_hash(
                         output_path, result.source_hashes,
                         buffer_size=job.buffer_size,
                         progress_callback=lambda p, t: self._progress.update(
                             {"copied_bytes": p, "total_bytes": t}),
+                        md5=job.hash_md5,
+                        sha1=job.hash_sha1,
+                        sha256=job.hash_sha256,
+                        sha512=job.hash_sha512,
                     ),
                 )
 
                 result.verify_hashes = verify_result["computed"]
                 result.match_result = (
                     "matched" if verify_result["all_match"] else "mismatched")
-
-
 
                 if verify_result["all_match"]:
                     logger.info("✅ イメージ検証: 全ハッシュ一致")
@@ -227,11 +245,12 @@ class ImagingEngine:
                     result.error_code = "E5002"
                     result.error_message = "ソースとイメージのハッシュが一致しません"
 
-            # キャンセルチェック
-            if self._cancel_event.is_set():
-                result.status = "cancelled"
-                result.error_code = "E3006"
-                result.error_message = "ユーザーによりキャンセルされました"
+                if self._cancel_event.is_set():
+                    result.status = "cancelled"
+                    result.error_code = "E3006"
+                    result.error_message = "ユーザーによりキャンセルされました"
+                else:
+                    result.status = "completed"
             else:
                 result.status = "completed"
 
@@ -254,6 +273,8 @@ class ImagingEngine:
                     result.copied_bytes / elapsed / (1024 * 1024), 2)
 
             self._progress["status"] = result.status
+            self._progress["error_count"] = result.error_count
+            self._progress["error_sectors"] = result.error_sectors
             logger.info(
                 f"イメージング終了: status={result.status}, "
                 f"time={elapsed:.1f}s, speed={result.avg_speed_mibps} MiB/s")

@@ -123,6 +123,7 @@ class HashRecord(Base):
     md5 = Column(String(32), default="")
     sha1 = Column(String(40), default="")
     sha256 = Column(String(64), default="")
+    sha512 = Column(String(128), default="")
     calculated_at = Column(DateTime, default=_utcnow)
     match_result = Column(String(20), default="pending")
     rfc3161_token = Column(LargeBinary, nullable=True)
@@ -170,6 +171,8 @@ class AuditLog(Base):
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     timestamp = Column(DateTime, default=_utcnow, index=True)
+    # ハッシュ入力に使った正確な ISO 文字列（DB 往復で表現が変わるのを防ぐ）
+    hash_timestamp_iso = Column(String(64), default="")
     level = Column(String(10), default="INFO")
     category = Column(String(20), default="system")
     message = Column(Text, default="")

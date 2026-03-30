@@ -10,7 +10,7 @@ from typing import Any, Optional
 
 import bcrypt
 
-from src.models.database import get_session
+from src.models.database import session_scope
 from src.models.schema import User
 
 logger = logging.getLogger("mfeps.auth")
@@ -37,8 +37,7 @@ class AuthService:
 
     def authenticate(self, username: str, password: str) -> Optional[dict[str, Any]]:
         """成功時はセッション用のユーザーディクトを返す"""
-        session = get_session()
-        try:
+        with session_scope() as session:
             user = (
                 session.query(User)
                 .filter(User.username == username.strip())
@@ -49,25 +48,16 @@ class AuthService:
             if not self.verify_password(password, user.password_hash):
                 return None
             user.last_login_at = datetime.now(timezone.utc)
-            session.commit()
             return {
                 "id": user.id,
                 "username": user.username,
                 "display_name": user.display_name or user.username,
                 "role": user.role,
             }
-        except Exception:
-            session.rollback()
-            raise
-        finally:
-            session.close()
 
     def get_user_by_id(self, user_id: str) -> Optional[User]:
-        session = get_session()
-        try:
+        with session_scope() as session:
             return session.query(User).filter(User.id == user_id).first()
-        finally:
-            session.close()
 
 
 _auth_service: Optional[AuthService] = None
@@ -84,42 +74,38 @@ def ensure_default_admin() -> None:
     """
     ユーザーが 0 件のとき admin を 1 件作成し、ランダムパスワードをコンソールに表示する。
     """
-    session = get_session()
     try:
-        count = session.query(User).count()
-        if count > 0:
-            return
+        with session_scope() as session:
+            count = session.query(User).count()
+            if count > 0:
+                return
 
-        password = secrets.token_urlsafe(16)
-        svc = AuthService()
-        h = svc.hash_password(password)
-        admin = User(
-            username="admin",
-            password_hash=h,
-            display_name="Administrator",
-            role="admin",
-        )
-        session.add(admin)
-        session.commit()
+            password = secrets.token_urlsafe(16)
+            svc = AuthService()
+            h = svc.hash_password(password)
+            admin = User(
+                username="admin",
+                password_hash=h,
+                display_name="Administrator",
+                role="admin",
+            )
+            session.add(admin)
 
-        banner = (
-            "\n"
-            + "=" * 60
-            + "\n"
-            "初回起動: デフォルト管理者アカウントを作成しました。\n"
-            f"  ユーザー名: admin\n"
-            f"  パスワード: {password}\n"
-            "（このメッセージは初回のみ表示されます。必ず変更してください。）\n"
-            + "=" * 60
-            + "\n"
-        )
-        logger.warning(
-            "初回起動: デフォルト管理者 admin を作成（パスワードはコンソール出力を参照）"
-        )
-        print(banner)
+            banner = (
+                "\n"
+                + "=" * 60
+                + "\n"
+                "初回起動: デフォルト管理者アカウントを作成しました。\n"
+                f"  ユーザー名: admin\n"
+                f"  パスワード: {password}\n"
+                "（このメッセージは初回のみ表示されます。必ず変更してください。）\n"
+                + "=" * 60
+                + "\n"
+            )
+            logger.warning(
+                "初回起動: デフォルト管理者 admin を作成（パスワードはコンソール出力を参照）"
+            )
+            print(banner)
     except Exception as e:
-        session.rollback()
         logger.error("ensure_default_admin 失敗: %s", e)
         raise
-    finally:
-        session.close()

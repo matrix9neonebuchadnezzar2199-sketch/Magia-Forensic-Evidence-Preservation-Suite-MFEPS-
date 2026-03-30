@@ -43,7 +43,8 @@ class DoubleBufferManager:
     ) -> None:
         """
         非同期読取ループ。
-        read_func(offset, size) -> bytes を呼び出してキューに投入。
+        read_func(offset, size, buffer) -> bytes を呼び出してキューに投入。
+        buffer は ctypes バッファ（read_sectors 等にそのまま渡す）。
         """
         offset = 0
         use_a = True
@@ -65,10 +66,11 @@ class DoubleBufferManager:
             if read_size % self.sector_size != 0:
                 read_size = ((read_size // self.sector_size) + 1) * self.sector_size
 
-            # 読取実行
+            # 読取実行（ダブルバッファを交互に使用）
             try:
-                data = await asyncio.get_event_loop().run_in_executor(
-                    None, read_func, offset, read_size
+                buf = self._buffer_a if use_a else self._buffer_b
+                data = await asyncio.get_running_loop().run_in_executor(
+                    None, read_func, offset, read_size, buf,
                 )
 
                 # 実際に必要なバイト数にトリミング
@@ -78,6 +80,7 @@ class DoubleBufferManager:
 
                 await self._queue.put((offset, data))
                 offset += len(data)
+                use_a = not use_a
 
             except OSError as e:
                 logger.warning(f"読取エラー offset={offset}: {e}")
@@ -89,8 +92,7 @@ class DoubleBufferManager:
                 actual_size = min(len(zero_data), remaining)
                 await self._queue.put((offset, zero_data[:actual_size]))
                 offset += actual_size
-
-            use_a = not use_a
+                use_a = not use_a
 
         # 終了シグナル
         await self._queue.put(None)
@@ -121,7 +123,7 @@ class DoubleBufferManager:
             hash_engine.update(data)
 
             # ファイル書込（非同期）
-            await asyncio.get_event_loop().run_in_executor(
+            await asyncio.get_running_loop().run_in_executor(
                 None, output_file.write, data
             )
 

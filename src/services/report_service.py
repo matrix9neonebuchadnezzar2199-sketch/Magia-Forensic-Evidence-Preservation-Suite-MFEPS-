@@ -8,12 +8,52 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
-from src.models.database import get_session
-from src.models.schema import ImagingJob, HashRecord, ChainOfCustody, Case, EvidenceItem
+from src.models.database import session_scope
+from src.models.schema import ImagingJob, HashRecord, Case, EvidenceItem
 from src.utils.config import get_config
 from src.utils.constants import APP_VERSION
 
 logger = logging.getLogger("mfeps.report_service")
+
+
+def _register_pdf_japanese_font() -> str:
+    """Windows 標準の日本語フォントを ReportLab に登録。失敗時は Helvetica。"""
+    try:
+        from reportlab.pdfbase import pdfmetrics
+        from reportlab.pdfbase.ttfonts import TTFont
+
+        try:
+            pdfmetrics.getFont("MFEPSJP")
+            return "MFEPSJP"
+        except KeyError:
+            pass
+
+        windir = os.environ.get("WINDIR", r"C:\Windows")
+        fonts_dir = Path(windir) / "Fonts"
+        candidates = [
+            ("msgothic.ttc", 0),
+            ("YuGothM.ttc", 0),
+            ("meiryo.ttc", 0),
+            ("msgothic.ttf", None),
+            ("meiryo.ttf", None),
+        ]
+        for fname, sub in candidates:
+            p = fonts_dir / fname
+            if not p.is_file():
+                continue
+            try:
+                if sub is not None:
+                    pdfmetrics.registerFont(
+                        TTFont("MFEPSJP", str(p), subfontIndex=sub)
+                    )
+                else:
+                    pdfmetrics.registerFont(TTFont("MFEPSJP", str(p)))
+                return "MFEPSJP"
+            except Exception:
+                continue
+        return "Helvetica"
+    except Exception:
+        return "Helvetica"
 
 
 class ReportService:
@@ -37,8 +77,8 @@ class ReportService:
             from reportlab.lib.units import mm
             from reportlab.pdfgen import canvas
             from reportlab.lib.colors import HexColor
-            from reportlab.pdfbase import pdfmetrics
-            from reportlab.pdfbase.ttfonts import TTFont
+
+            jp = _register_pdf_japanese_font()
 
             c = canvas.Canvas(str(output_path), pagesize=A4)
             width, height = A4
@@ -55,11 +95,14 @@ class ReportService:
             c.drawCentredString(width / 2, height - 180,
                                "Forensic Evidence Preservation Suite")
 
-            c.setFont("Helvetica-Bold", 18)
+            if jp == "Helvetica":
+                c.setFont("Helvetica-Bold", 18)
+            else:
+                c.setFont(jp, 18)
             c.drawCentredString(width / 2, height - 250,
                                "デジタル証拠イメージング報告書")
 
-            c.setFont("Helvetica", 12)
+            c.setFont(jp, 12)
             y = height - 320
             info_lines = [
                 f"案件番号: {data['case_number']}",
@@ -77,28 +120,37 @@ class ReportService:
 
             # セクション: ハッシュ検証結果
             c.setFillColor(HexColor("#000000"))
-            c.setFont("Helvetica-Bold", 16)
+            if jp == "Helvetica":
+                c.setFont("Helvetica-Bold", 16)
+            else:
+                c.setFont(jp, 16)
             c.drawString(30, height - 50, "ハッシュ検証結果")
 
             y = height - 80
-            c.setFont("Helvetica", 10)
+            c.setFont(jp, 10)
 
             for label, hashes in [("ソース", data.get("source_hashes", {})),
                                   ("イメージ", data.get("verify_hashes", {}))]:
-                c.setFont("Helvetica-Bold", 12)
+                if jp == "Helvetica":
+                    c.setFont("Helvetica-Bold", 12)
+                else:
+                    c.setFont(jp, 12)
                 c.drawString(30, y, f"■ {label}")
                 y -= 18
 
                 c.setFont("Courier", 10)
-                for algo in ["md5", "sha1", "sha256"]:
-                    val = hashes.get(algo, "N/A")
+                for algo in ["md5", "sha1", "sha256", "sha512"]:
+                    val = hashes.get(algo) or "N/A"
                     c.drawString(50, y, f"{algo.upper().ljust(8)}: {val}")
                     y -= 14
                 y -= 8
 
             # 照合結果
             match = data.get("match_result", "pending")
-            c.setFont("Helvetica-Bold", 14)
+            if jp == "Helvetica":
+                c.setFont("Helvetica-Bold", 14)
+            else:
+                c.setFont(jp, 14)
             if match == "matched":
                 c.setFillColor(HexColor("#00E676"))
                 c.drawString(30, y, "✅ 全ハッシュ一致: 完全性確認済み")
@@ -110,10 +162,13 @@ class ReportService:
             y -= 40
 
             # 統計情報
-            c.setFont("Helvetica-Bold", 12)
+            if jp == "Helvetica":
+                c.setFont("Helvetica-Bold", 12)
+            else:
+                c.setFont(jp, 12)
             c.drawString(30, y, "■ 統計情報")
             y -= 18
-            c.setFont("Helvetica", 10)
+            c.setFont(jp, 10)
             stats = [
                 f"総バイト数: {data.get('total_bytes', 0):,} bytes",
                 f"コピー済み: {data.get('copied_bytes', 0):,} bytes",
@@ -127,10 +182,13 @@ class ReportService:
 
             # 書き込み保護方式
             y -= 30
-            c.setFont("Helvetica-Bold", 12)
+            if jp == "Helvetica":
+                c.setFont("Helvetica-Bold", 12)
+            else:
+                c.setFont(jp, 12)
             c.drawString(30, y, "■ 書き込み保護")
             y -= 18
-            c.setFont("Helvetica", 10)
+            c.setFont(jp, 10)
 
             wb_method = data.get("write_block_method", "none")
             wb_labels = {
@@ -214,9 +272,9 @@ th {{ background: #f0f0f0; }}
 
         source_h = data.get("source_hashes", {})
         verify_h = data.get("verify_hashes", {})
-        for algo in ["md5", "sha1", "sha256"]:
-            s = source_h.get(algo, "N/A")
-            v = verify_h.get(algo, "N/A")
+        for algo in ["md5", "sha1", "sha256", "sha512"]:
+            s = source_h.get(algo) or "N/A"
+            v = verify_h.get(algo) or "N/A"
             match = "✅" if s == v and s != "N/A" else "❌"
             html += f'\n<tr><td>{algo.upper()}</td><td class="hash">{s}</td><td class="hash">{v}</td><td>{match}</td></tr>'
 
@@ -278,36 +336,54 @@ th {{ background: #f0f0f0; }}
 
     def _collect_report_data(self, job_id: str) -> Optional[dict]:
         """報告書用データをDBから収集"""
-        session = get_session()
-        try:
-            job = session.query(ImagingJob).get(job_id)
+        with session_scope() as session:
+            job = session.get(ImagingJob, job_id)
             if not job:
                 return None
 
-            evidence = session.query(EvidenceItem).get(job.evidence_id)
-            case = session.query(Case).get(evidence.case_id) if evidence else None
+            evidence = (
+                session.get(EvidenceItem, job.evidence_id)
+                if job.evidence_id
+                else None
+            )
+            case = (
+                session.get(Case, evidence.case_id)
+                if evidence and evidence.case_id
+                else None
+            )
 
             source_hash = session.query(HashRecord).filter_by(
-                job_id=job_id, target="source").first()
+                job_id=job_id, target="source"
+            ).first()
             verify_hash = session.query(HashRecord).filter_by(
-                job_id=job_id, target="verify").first()
+                job_id=job_id, target="verify"
+            ).first()
+
+            def _hash_fields(hr: Optional[HashRecord]) -> dict:
+                if not hr:
+                    return {
+                        "md5": "",
+                        "sha1": "",
+                        "sha256": "",
+                        "sha512": "",
+                    }
+                return {
+                    "md5": hr.md5 or "",
+                    "sha1": hr.sha1 or "",
+                    "sha256": hr.sha256 or "",
+                    "sha512": getattr(hr, "sha512", None) or "",
+                }
 
             return {
                 "case_number": case.case_number if case else "N/A",
                 "case_name": case.case_name if case else "N/A",
                 "examiner_name": case.examiner_name if case else "N/A",
                 "evidence_number": evidence.evidence_number if evidence else "N/A",
-                "source_hashes": {
-                    "md5": source_hash.md5 if source_hash else "",
-                    "sha1": source_hash.sha1 if source_hash else "",
-                    "sha256": source_hash.sha256 if source_hash else "",
-                },
-                "verify_hashes": {
-                    "md5": verify_hash.md5 if verify_hash else "",
-                    "sha1": verify_hash.sha1 if verify_hash else "",
-                    "sha256": verify_hash.sha256 if verify_hash else "",
-                },
-                "match_result": verify_hash.match_result if verify_hash else "pending",
+                "source_hashes": _hash_fields(source_hash),
+                "verify_hashes": _hash_fields(verify_hash),
+                "match_result": (
+                    verify_hash.match_result if verify_hash else "pending"
+                ),
                 "total_bytes": job.total_bytes,
                 "copied_bytes": job.copied_bytes,
                 "elapsed_seconds": job.elapsed_seconds,
@@ -315,5 +391,3 @@ th {{ background: #f0f0f0; }}
                 "error_count": job.error_count,
                 "write_block_method": job.write_block_method or "none",
             }
-        finally:
-            session.close()

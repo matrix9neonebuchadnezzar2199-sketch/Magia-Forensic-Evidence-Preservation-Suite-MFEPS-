@@ -1,14 +1,14 @@
 """
 MFEPS v2.0 — CoC (Chain of Custody) サービス / ハッシュ検証サービス
 """
-import hashlib
+import csv
+import io
 import json
 import logging
 import uuid
-from datetime import datetime, timezone
 from typing import Optional
 
-from src.models.database import get_session
+from src.models.database import session_scope
 from src.models.schema import ChainOfCustody, HashRecord
 from src.utils.config import get_config
 
@@ -21,30 +21,25 @@ class CoCService:
     def add_entry(self, evidence_id: str, action: str,
                   actor_name: str, description: str = "",
                   hash_snapshot: dict = None) -> str:
-        session = get_session()
         try:
-            entry = ChainOfCustody(
-                id=str(uuid.uuid4()),
-                evidence_id=evidence_id,
-                action=action,
-                actor_name=actor_name,
-                description=description,
-                hash_snapshot=json.dumps(hash_snapshot or {}),
-            )
-            session.add(entry)
-            session.commit()
-            logger.info(f"CoC エントリ追加: {action} by {actor_name}")
-            return entry.id
+            with session_scope() as session:
+                entry = ChainOfCustody(
+                    id=str(uuid.uuid4()),
+                    evidence_id=evidence_id,
+                    action=action,
+                    actor_name=actor_name,
+                    description=description,
+                    hash_snapshot=json.dumps(hash_snapshot or {}),
+                )
+                session.add(entry)
+                logger.info(f"CoC エントリ追加: {action} by {actor_name}")
+                return entry.id
         except Exception as e:
-            session.rollback()
             logger.error(f"CoC エントリ追加失敗: {e}")
             raise
-        finally:
-            session.close()
 
     def get_entries(self, evidence_id: str) -> list[dict]:
-        session = get_session()
-        try:
+        with session_scope() as session:
             entries = session.query(ChainOfCustody).filter_by(
                 evidence_id=evidence_id).order_by(
                 ChainOfCustody.timestamp.asc()).all()
@@ -59,21 +54,17 @@ class CoCService:
                 }
                 for e in entries
             ]
-        finally:
-            session.close()
 
     def export(self, evidence_id: str, format: str = "json") -> str:
         entries = self.get_entries(evidence_id)
         if format == "json":
             return json.dumps(entries, indent=2, ensure_ascii=False)
-        else:
-            import csv, io
-            output = io.StringIO()
-            if entries:
-                writer = csv.DictWriter(output, fieldnames=entries[0].keys())
-                writer.writeheader()
-                writer.writerows(entries)
-            return output.getvalue()
+        output = io.StringIO()
+        if entries:
+            writer = csv.DictWriter(output, fieldnames=entries[0].keys())
+            writer.writeheader()
+            writer.writerows(entries)
+        return output.getvalue()
 
 
 class HashService:
@@ -81,8 +72,7 @@ class HashService:
 
     def verify_hash(self, job_id: str) -> dict:
         """既存ジョブのハッシュを再検証"""
-        session = get_session()
-        try:
+        with session_scope() as session:
             source = session.query(HashRecord).filter_by(
                 job_id=job_id, target="source").first()
             verify = session.query(HashRecord).filter_by(
@@ -96,13 +86,15 @@ class HashService:
                 "sha1_match": source.sha1 == verify.sha1,
                 "sha256_match": source.sha256 == verify.sha256,
             }
-            result["all_match"] = all(result.values())
+            if (getattr(source, "sha512", "") or getattr(verify, "sha512", "")):
+                result["sha512_match"] = source.sha512 == verify.sha512
+            result["all_match"] = all(
+                v for k, v in result.items() if k.endswith("_match")
+            )
             return result
-        finally:
-            session.close()
 
     def get_rfc3161_timestamp(self, digest: bytes,
-                               algorithm: str = "sha256") -> Optional[bytes]:
+                            algorithm: str = "sha256") -> Optional[bytes]:
         """RFC3161 タイムスタンプ取得（オプション）"""
         config = get_config()
         if not config.mfeps_rfc3161_enabled:

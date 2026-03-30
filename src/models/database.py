@@ -3,6 +3,7 @@ MFEPS v2.0 — SQLite データベース接続・初期化
 WALモード, 自動テーブル生成
 """
 import logging
+from contextlib import contextmanager
 from pathlib import Path
 from sqlalchemy import create_engine, event, text
 from sqlalchemy.orm import sessionmaker, Session
@@ -49,16 +50,54 @@ def init_database(db_path: Path) -> None:
             conn.commit()
             logger.info("マイグレーション: imaging_jobs.write_block_method を追加しました")
 
+    # 既存 DB 向け: audit_log.hash_timestamp_iso
+    with _engine.connect() as conn:
+        rows = conn.execute(text("PRAGMA table_info(audit_log)")).fetchall()
+        col_names = {r[1] for r in rows}
+        if "hash_timestamp_iso" not in col_names:
+            conn.execute(
+                text("ALTER TABLE audit_log ADD COLUMN hash_timestamp_iso VARCHAR(64) DEFAULT ''")
+            )
+            conn.commit()
+            logger.info("マイグレーション: audit_log.hash_timestamp_iso を追加しました")
+
+    # hash_records.sha512（オプションアルゴリズム）
+    with _engine.connect() as conn:
+        rows = conn.execute(text("PRAGMA table_info(hash_records)")).fetchall()
+        col_names = {r[1] for r in rows}
+        if "sha512" not in col_names:
+            conn.execute(
+                text("ALTER TABLE hash_records ADD COLUMN sha512 VARCHAR(128) DEFAULT ''")
+            )
+            conn.commit()
+            logger.info("マイグレーション: hash_records.sha512 を追加しました")
+
     _session_factory = sessionmaker(bind=_engine, expire_on_commit=False)
 
     logger.info(f"データベース初期化完了: {db_path}")
 
 
 def get_session() -> Session:
-    """新しいセッションを取得"""
+    """新しいセッションを取得（手動で commit / close が必要な場合）"""
     if _session_factory is None:
         raise RuntimeError("データベースが初期化されていません。init_database() を先に呼び出してください。")
     return _session_factory()
+
+
+@contextmanager
+def session_scope():
+    """トランザクション境界付きセッション（成功時 commit、例外時 rollback）"""
+    if _session_factory is None:
+        raise RuntimeError("データベースが初期化されていません。init_database() を先に呼び出してください。")
+    session = _session_factory()
+    try:
+        yield session
+        session.commit()
+    except Exception:
+        session.rollback()
+        raise
+    finally:
+        session.close()
 
 
 def get_engine():

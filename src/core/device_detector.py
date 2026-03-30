@@ -56,7 +56,7 @@ def detect_block_devices() -> list[DeviceInfo]:
         # PowerShell で物理ディスク情報を取得しJSON形式で出力
         result = subprocess.run(
             ["powershell", "-NoProfile", "-Command",
-             "Get-WmiObject Win32_DiskDrive -ErrorAction SilentlyContinue | Select-Object Index,Model,SerialNumber,Size,MediaType,InterfaceType,BytesPerSector,Partitions | ConvertTo-Json"],
+             "Get-CimInstance Win32_DiskDrive -ErrorAction SilentlyContinue | Select-Object Index,Model,SerialNumber,Size,MediaType,InterfaceType,BytesPerSector,Partitions | ConvertTo-Json"],
             capture_output=True, text=True, timeout=15, encoding="utf-8",
             errors="replace",
         )
@@ -130,14 +130,13 @@ def _map_drive_letters(devices: list[DeviceInfo]) -> None:
     try:
         # diskdrive → partition → logical disk のチェーンを辿る
         result = subprocess.run(
-            ["powershell", "-Command",
-             "Get-WmiObject Win32_DiskDrive | ForEach-Object { "
+            ["powershell", "-NoProfile", "-Command",
+             "Get-CimInstance Win32_DiskDrive | ForEach-Object { "
              "$disk = $_; "
-             "$parts = $disk.GetRelated('Win32_DiskPartition'); "
-             "foreach($part in $parts) { "
-             "$logicals = $part.GetRelated('Win32_LogicalDisk'); "
-             "foreach($log in $logicals) { "
-             "[PSCustomObject]@{Index=$disk.Index;Letter=$log.DeviceID;FS=$log.FileSystem;Size=$log.Size;Free=$log.FreeSpace} "
+             "Get-CimAssociatedInstance -InputObject $disk -ResultClassName Win32_DiskPartition | ForEach-Object { "
+             "$part = $_; "
+             "Get-CimAssociatedInstance -InputObject $part -ResultClassName Win32_LogicalDisk | ForEach-Object { "
+             "[PSCustomObject]@{Index=$disk.Index;Letter=$_.DeviceID;FS=$_.FileSystem;Size=$_.Size;Free=$_.FreeSpace} "
              "} } } | ConvertTo-Json"],
             capture_output=True, text=True, timeout=15, encoding="utf-8",
             errors="replace",
@@ -181,7 +180,7 @@ def detect_optical_drives() -> list[OpticalDriveInfo]:
     try:
         result = subprocess.run(
             ["powershell", "-NoProfile", "-Command",
-             "Get-WmiObject Win32_CDROMDrive -ErrorAction SilentlyContinue | Select-Object Drive,Name,MediaLoaded,DeviceID | ConvertTo-Json"],
+             "Get-CimInstance Win32_CDROMDrive -ErrorAction SilentlyContinue | Select-Object Drive,Name,MediaLoaded,DeviceID | ConvertTo-Json"],
             capture_output=True, text=True, timeout=15, encoding="utf-8",
             errors="replace",
         )

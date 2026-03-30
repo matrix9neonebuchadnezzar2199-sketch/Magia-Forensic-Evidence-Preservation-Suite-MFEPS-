@@ -13,7 +13,12 @@ from pydantic import BaseModel
 
 from src.core.hash_engine import TripleHashEngine
 from src.core.win32_raw_io import (
-    open_device, close_device, read_cdrom_toc, read_sectors, scsi_read_cd,
+    open_device,
+    close_device,
+    read_cdrom_toc,
+    read_sectors,
+    scsi_read_cd,
+    get_disk_length,
 )
 
 logger = logging.getLogger("mfeps.optical_engine")
@@ -78,11 +83,24 @@ class OpticalMediaAnalyzer:
             else:
                 result.sector_size = 2048
 
-            # 容量計算
-            if result.tracks:
-                last_track = result.tracks[-1]
-                # おおよその容量
-                result.sector_count = last_track.address_lba
+            # 容量計算: IOCTL のディスク長を優先（DVD/BD/データ CD で有効なことが多い）
+            try:
+                length_bytes = get_disk_length(handle)
+                if length_bytes > 0:
+                    result.capacity_bytes = length_bytes
+                    result.sector_count = (
+                        (length_bytes + result.sector_size - 1)
+                        // result.sector_size
+                    )
+            except OSError:
+                length_bytes = 0
+
+            if result.capacity_bytes <= 0 and result.tracks:
+                # フォールバック: 最終トラック開始 LBA 以降をざっくり見積もり
+                # （最終トラック長 + リードアウトを含まないため下限寄りになり得る）
+                max_lba = max(t.address_lba for t in result.tracks)
+                leadout_margin = 6750 * 75  # 約 9 分相当 @ 75セクタ/秒（CD の目安）
+                result.sector_count = max_lba + max(leadout_margin, 32768)
                 result.capacity_bytes = result.sector_count * result.sector_size
 
             # ファイルシステム判定
@@ -193,6 +211,11 @@ class OpticalImagingEngine:
         use_pydvdcss: bool = False,
         use_aacs: bool = False,
         progress_callback: Optional[Callable] = None,
+        *,
+        hash_md5: bool = True,
+        hash_sha1: bool = True,
+        hash_sha256: bool = True,
+        hash_sha512: bool = False,
     ) -> dict:
         """
         光学メディアをイメージングする。
@@ -201,7 +224,12 @@ class OpticalImagingEngine:
         いずれも初期化失敗時は RAW にフォールバック。
         """
         start_time = time.time()
-        hash_engine = TripleHashEngine()
+        hash_engine = TripleHashEngine(
+            md5=hash_md5,
+            sha1=hash_sha1,
+            sha256=hash_sha256,
+            sha512=hash_sha512,
+        )
         error_count = 0
         error_sectors = []
 

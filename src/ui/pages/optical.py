@@ -2,7 +2,7 @@
 MFEPS v2.0 — 光学メディア (CD/DVD/BD) ウィザードページ
 4段階ウィザード + コピーガード解析結果表示
 """
-from nicegui import ui
+from nicegui import ui, app
 import asyncio
 
 from src.core.device_detector import detect_optical_drives, OpticalDriveInfo
@@ -160,6 +160,7 @@ def build_optical_page():
                         and p.can_decrypt
                         for p in prots
                     )
+                    g = app.storage.general
                     job_id = await svc.start_optical_imaging(
                         drive_path=state["selected_drive"].device_path,
                         case_id=case_val,
@@ -170,6 +171,10 @@ def build_optical_page():
                         use_aacs=use_aacs,
                         verify=verify_switch.value,
                         actor_name=get_current_actor_name(),
+                        hash_md5=g.get("hash_md5", True),
+                        hash_sha1=g.get("hash_sha1", True),
+                        hash_sha256=g.get("hash_sha256", True),
+                        hash_sha512=g.get("hash_sha512", False),
                     )
                     state["job_id"] = job_id
                     
@@ -178,7 +183,7 @@ def build_optical_page():
                     log_area.push(f"[{job_id}] 光学メディアのイメージングを開始しました...")
                     
                     if "timer" in state and state["timer"]:
-                        state["timer"].deactivate()
+                        state["timer"].active = False
                     state["timer"] = ui.timer(1.0, update_progress)
                     stepper.next()
 
@@ -222,7 +227,7 @@ def build_optical_page():
                         
                 if status in ["completed", "failed", "cancelled"]:
                     if "timer" in state and state["timer"]:
-                        state["timer"].deactivate()
+                        state["timer"].active = False
                         state["timer"] = None
                     btn_next.enable()
                     state["result"] = progress

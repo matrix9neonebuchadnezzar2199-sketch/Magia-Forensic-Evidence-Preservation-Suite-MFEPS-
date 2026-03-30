@@ -11,9 +11,10 @@ from typing import Optional, Callable
 from src.core.imaging_engine import ImagingEngine, ImagingJobParams, ImagingResult
 from src.core.device_detector import DeviceInfo
 from src.core.write_blocker import check_write_protection
-from src.models.database import get_session
+from src.models.database import session_scope
 from src.models.schema import ImagingJob, HashRecord, ChainOfCustody, AuditLog
 from src.utils.config import get_config
+from src.utils.path_sanitize import sanitize_path_component
 
 logger = logging.getLogger("mfeps.imaging_service")
 
@@ -37,6 +38,11 @@ class ImagingService:
         verify: bool = True,
         progress_callback: Optional[Callable] = None,
         actor_name: str = "MFEPS Auto",
+        *,
+        hash_md5: bool = True,
+        hash_sha1: bool = True,
+        hash_sha256: bool = True,
+        hash_sha512: bool = False,
     ) -> str:
         """
         イメージングを開始。
@@ -59,8 +65,10 @@ class ImagingService:
             capacity_bytes=device.capacity_bytes
         )
 
-        # 出力先ディレクトリ (ディレクトリ名にはユーザーが入力したわかりやすい文字列番号を使う)
-        output_dir = config.output_dir / case_id / evidence_id
+        # 出力先ディレクトリ (ユーザー入力はパスサニタイズ)
+        safe_case = sanitize_path_component(case_id)
+        safe_ev = sanitize_path_component(evidence_id)
+        output_dir = config.output_dir / safe_case / safe_ev
         output_dir.mkdir(parents=True, exist_ok=True)
 
         wb_status = check_write_protection(device.device_path)
@@ -73,28 +81,23 @@ class ImagingService:
         else:
             write_block_method = "none"
 
-        # DB レコード作成
-        session = get_session()
         try:
-            db_job = ImagingJob(
-                id=job_id,
-                evidence_id=real_evidence_id,
-                status="pending",
-                source_path=device.device_path,
-                output_path=str(output_dir / "image.dd"),
-                output_format=output_format,
-                total_bytes=device.capacity_bytes,
-                buffer_size=config.mfeps_buffer_size,
-                write_block_method=write_block_method,
-            )
-            session.add(db_job)
-            session.commit()
+            with session_scope() as session:
+                db_job = ImagingJob(
+                    id=job_id,
+                    evidence_id=real_evidence_id,
+                    status="pending",
+                    source_path=device.device_path,
+                    output_path=str(output_dir / "image.dd"),
+                    output_format=output_format,
+                    total_bytes=device.capacity_bytes,
+                    buffer_size=config.mfeps_buffer_size,
+                    write_block_method=write_block_method,
+                )
+                session.add(db_job)
         except Exception as e:
-            session.rollback()
             logger.error(f"DB レコード作成失敗: {e}")
             raise
-        finally:
-            session.close()
 
         # エンジン作成
         self._job_actors[job_id] = actor_name
@@ -113,6 +116,10 @@ class ImagingService:
             output_format=output_format,
             buffer_size=config.mfeps_buffer_size,
             verify_after_copy=verify,
+            hash_md5=hash_md5,
+            hash_sha1=hash_sha1,
+            hash_sha256=hash_sha256,
+            hash_sha512=hash_sha512,
         )
 
         # 非同期タスク起動
@@ -149,65 +156,60 @@ class ImagingService:
     async def on_imaging_complete(self, result: ImagingResult) -> None:
         """イメージング完了処理: DB更新"""
         actor_name = self._job_actors.pop(result.job_id, "MFEPS Auto")
-        session = get_session()
+        job = None
         try:
-            # imaging_jobs 更新
-            job = session.query(ImagingJob).get(result.job_id)
-            if job:
-                job.status = result.status
-                job.copied_bytes = result.copied_bytes
-                job.error_count = result.error_count
-                job.completed_at = datetime.now(timezone.utc)
-                job.elapsed_seconds = result.elapsed_seconds
-                job.avg_speed_mbps = result.avg_speed_mibps
-                if result.output_path:
-                    job.output_path = result.output_path
+            with session_scope() as session:
+                job = session.get(ImagingJob, result.job_id)
+                if job:
+                    job.status = result.status
+                    job.copied_bytes = result.copied_bytes
+                    job.error_count = result.error_count
+                    job.completed_at = datetime.now(timezone.utc)
+                    job.elapsed_seconds = result.elapsed_seconds
+                    job.avg_speed_mbps = result.avg_speed_mibps
+                    if result.output_path:
+                        job.output_path = result.output_path
 
-            # ソースハッシュ記録
-            if result.source_hashes:
-                source_hash = HashRecord(
-                    job_id=result.job_id,
-                    target="source",
-                    md5=result.source_hashes.get("md5", ""),
-                    sha1=result.source_hashes.get("sha1", ""),
-                    sha256=result.source_hashes.get("sha256", ""),
-                    match_result="pending",
-                )
-                session.add(source_hash)
+                if result.source_hashes:
+                    source_hash = HashRecord(
+                        job_id=result.job_id,
+                        target="source",
+                        md5=result.source_hashes.get("md5", ""),
+                        sha1=result.source_hashes.get("sha1", ""),
+                        sha256=result.source_hashes.get("sha256", ""),
+                        sha512=result.source_hashes.get("sha512", ""),
+                        match_result="pending",
+                    )
+                    session.add(source_hash)
 
-            # 検証ハッシュ記録
-            if result.verify_hashes:
-                verify_hash = HashRecord(
-                    job_id=result.job_id,
-                    target="verify",
-                    md5=result.verify_hashes.get("md5", ""),
-                    sha1=result.verify_hashes.get("sha1", ""),
-                    sha256=result.verify_hashes.get("sha256", ""),
-                    match_result=result.match_result,
-                )
-                session.add(verify_hash)
+                if result.verify_hashes:
+                    verify_hash = HashRecord(
+                        job_id=result.job_id,
+                        target="verify",
+                        md5=result.verify_hashes.get("md5", ""),
+                        sha1=result.verify_hashes.get("sha1", ""),
+                        sha256=result.verify_hashes.get("sha256", ""),
+                        sha512=result.verify_hashes.get("sha512", ""),
+                        match_result=result.match_result,
+                    )
+                    session.add(verify_hash)
 
-            # CoC エントリ追加
-            if job:
-                coc = ChainOfCustody(
-                    evidence_id=job.evidence_id,
-                    action="imaged",
-                    actor_name=actor_name,
-                    description=f"イメージング {result.status}: "
-                                f"{result.copied_bytes} bytes, "
-                                f"{result.elapsed_seconds}s",
-                    hash_snapshot=str(result.source_hashes),
-                )
-                session.add(coc)
+                if job:
+                    coc = ChainOfCustody(
+                        evidence_id=job.evidence_id,
+                        action="imaged",
+                        actor_name=actor_name,
+                        description=f"イメージング {result.status}: "
+                                    f"{result.copied_bytes} bytes, "
+                                    f"{result.elapsed_seconds}s",
+                        hash_snapshot=str(result.source_hashes),
+                    )
+                    session.add(coc)
 
-            session.commit()
-            logger.info(f"DB更新完了: job_id={result.job_id}")
+                logger.info(f"DB更新完了: job_id={result.job_id}")
 
         except Exception as e:
-            session.rollback()
             logger.error(f"DB更新失敗: {e}")
-        finally:
-            session.close()
 
         # 結果をキャッシュ（UI参照用）
         self._results[result.job_id] = {
@@ -218,6 +220,7 @@ class ImagingService:
             "total_bytes": result.total_bytes,
             "copied_bytes": result.copied_bytes,
             "error_count": result.error_count,
+            "error_sectors": result.error_sectors,
             "elapsed_seconds": result.elapsed_seconds,
             "avg_speed_mibps": result.avg_speed_mibps,
             "output_path": result.output_path,
@@ -255,19 +258,15 @@ class ImagingService:
 
     def _update_job_status(self, job_id: str, status: str, **kwargs) -> None:
         """DBジョブステータス更新"""
-        session = get_session()
         try:
-            job = session.query(ImagingJob).get(job_id)
-            if job:
-                job.status = status
-                for k, v in kwargs.items():
-                    setattr(job, k, v)
-                session.commit()
+            with session_scope() as session:
+                job = session.get(ImagingJob, job_id)
+                if job:
+                    job.status = status
+                    for k, v in kwargs.items():
+                        setattr(job, k, v)
         except Exception as e:
-            session.rollback()
             logger.error(f"ジョブステータス更新失敗: {e}")
-        finally:
-            session.close()
 
 
 # シングルトン

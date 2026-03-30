@@ -9,7 +9,7 @@ from datetime import datetime, timezone
 
 from nicegui import ui
 
-from src.models.database import get_session
+from src.models.database import session_scope
 from src.models.schema import AppSettings
 from src.services.audit_service import get_audit_service
 
@@ -55,8 +55,7 @@ CONSENT_LABEL = (
 
 def is_consent_given() -> bool:
     """同意済みかどうかを確認（文言バージョン一致時のみ有効）"""
-    session = get_session()
-    try:
+    with session_scope() as session:
         settings = session.query(AppSettings).first()
         if settings is None:
             return False
@@ -64,8 +63,6 @@ def is_consent_given() -> bool:
             settings.legal_consent_accepted
             and settings.legal_consent_version == LEGAL_CONSENT_VERSION
         )
-    finally:
-        session.close()
 
 
 def _on_scroll_to_bottom(e, checkbox: ui.checkbox) -> None:
@@ -82,8 +79,7 @@ def _on_scroll_to_bottom(e, checkbox: ui.checkbox) -> None:
 
 def _save_consent() -> None:
     """同意をDBと監査ログに記録"""
-    session = get_session()
-    try:
+    with session_scope() as session:
         settings = session.query(AppSettings).first()
         now = datetime.now(timezone.utc)
 
@@ -100,13 +96,6 @@ def _save_consent() -> None:
             settings.legal_consent_accepted = True
             settings.legal_consent_version = LEGAL_CONSENT_VERSION
             settings.legal_consent_at = now
-
-        session.commit()
-    except Exception:
-        session.rollback()
-        raise
-    finally:
-        session.close()
 
     audit = get_audit_service()
     audit.add_entry(

@@ -1,41 +1,60 @@
 """
 MFEPS v2.0 — トリプルハッシュエンジン
-MD5 + SHA-1 + SHA-256 ストリーミング同時計算
+MD5 + SHA-1 + SHA-256（＋オプション SHA-512）ストリーミング同時計算
 """
 import hashlib
 import logging
-from typing import Callable, Optional
 from pathlib import Path
+from typing import Callable, Optional
 
 logger = logging.getLogger("mfeps.hash_engine")
 
 
 class TripleHashEngine:
     """
-    MD5, SHA-1, SHA-256 を同時更新するストリーミングハッシュエンジン。
-    hashlib 内部は C(OpenSSL) 実装のため、3アルゴリズム合計で ~800 MiB/s 以上の処理能力。
+    複数アルゴリズムを同時更新するストリーミングハッシュエンジン。
+    既定は MD5 + SHA-1 + SHA-256。SHA-512 は設定で有効化。
     """
 
-    def __init__(self):
-        self._md5 = hashlib.md5()
-        self._sha1 = hashlib.sha1()
-        self._sha256 = hashlib.sha256()
+    def __init__(
+        self,
+        *,
+        md5: bool = True,
+        sha1: bool = True,
+        sha256: bool = True,
+        sha512: bool = False,
+    ):
+        self._md5 = hashlib.md5() if md5 else None
+        self._sha1 = hashlib.sha1() if sha1 else None
+        self._sha256 = hashlib.sha256() if sha256 else None
+        self._sha512 = hashlib.sha512() if sha512 else None
         self._bytes_processed = 0
+        self._enabled = {"md5": md5, "sha1": sha1, "sha256": sha256, "sha512": sha512}
 
     def update(self, data: bytes) -> None:
-        """3つのハッシュを同時更新"""
-        self._md5.update(data)
-        self._sha1.update(data)
-        self._sha256.update(data)
+        """有効なハッシュを同時更新"""
+        if self._md5:
+            self._md5.update(data)
+        if self._sha1:
+            self._sha1.update(data)
+        if self._sha256:
+            self._sha256.update(data)
+        if self._sha512:
+            self._sha512.update(data)
         self._bytes_processed += len(data)
 
     def hexdigests(self) -> dict[str, str]:
-        """現在のハッシュ値を16進文字列で返す"""
-        return {
-            "md5": self._md5.hexdigest(),
-            "sha1": self._sha1.hexdigest(),
-            "sha256": self._sha256.hexdigest(),
-        }
+        """現在のハッシュ値を16進文字列で返す（有効なもののみ）"""
+        out: dict[str, str] = {}
+        if self._md5:
+            out["md5"] = self._md5.hexdigest()
+        if self._sha1:
+            out["sha1"] = self._sha1.hexdigest()
+        if self._sha256:
+            out["sha256"] = self._sha256.hexdigest()
+        if self._sha512:
+            out["sha512"] = self._sha512.hexdigest()
+        return out
 
     @property
     def bytes_processed(self) -> int:
@@ -43,17 +62,25 @@ class TripleHashEngine:
 
     def reset(self) -> None:
         """新規イメージ用にリセット"""
-        self._md5 = hashlib.md5()
-        self._sha1 = hashlib.sha1()
-        self._sha256 = hashlib.sha256()
-        self._bytes_processed = 0
+        md5, sha1, sha256, sha512 = (
+            self._enabled["md5"],
+            self._enabled["sha1"],
+            self._enabled["sha256"],
+            self._enabled["sha512"],
+        )
+        self.__init__(md5=md5, sha1=sha1, sha256=sha256, sha512=sha512)
 
     def copy(self) -> "TripleHashEngine":
         """現在の状態をコピー（中断・再開用）"""
-        new = TripleHashEngine()
-        new._md5 = self._md5.copy()
-        new._sha1 = self._sha1.copy()
-        new._sha256 = self._sha256.copy()
+        new = TripleHashEngine(**self._enabled)
+        if new._md5 and self._md5:
+            new._md5 = self._md5.copy()
+        if new._sha1 and self._sha1:
+            new._sha1 = self._sha1.copy()
+        if new._sha256 and self._sha256:
+            new._sha256 = self._sha256.copy()
+        if new._sha512 and self._sha512:
+            new._sha512 = self._sha512.copy()
         new._bytes_processed = self._bytes_processed
         return new
 
@@ -63,18 +90,18 @@ def verify_image_hash(
     expected: dict[str, str],
     buffer_size: int = 1_048_576,
     progress_callback: Optional[Callable] = None,
+    *,
+    md5: bool = True,
+    sha1: bool = True,
+    sha256: bool = True,
+    sha512: bool = False,
 ) -> dict:
     """
-    出力イメージファイルを再読取してトリプルハッシュを計算し、期待値と比較。
-    Returns: {
-        "md5_match": bool,
-        "sha1_match": bool,
-        "sha256_match": bool,
-        "all_match": bool,
-        "computed": {"md5": str, "sha1": str, "sha256": str},
-    }
+    出力イメージファイルを再読取してハッシュを計算し、期待値と比較。
     """
-    engine = TripleHashEngine()
+    engine = TripleHashEngine(
+        md5=md5, sha1=sha1, sha256=sha256, sha512=sha512
+    )
     file_path = Path(image_path)
     file_size = file_path.stat().st_size
 
@@ -92,24 +119,33 @@ def verify_image_hash(
 
     computed = engine.hexdigests()
 
-    result = {
-        "md5_match": computed["md5"] == expected.get("md5", ""),
-        "sha1_match": computed["sha1"] == expected.get("sha1", ""),
-        "sha256_match": computed["sha256"] == expected.get("sha256", ""),
-        "computed": computed,
-    }
-    result["all_match"] = (result["md5_match"] and
-                           result["sha1_match"] and
-                           result["sha256_match"])
+    result: dict = {"computed": computed}
+    checks = []
+    if md5 and "md5" in computed:
+        result["md5_match"] = computed["md5"] == expected.get("md5", "")
+        checks.append(result["md5_match"])
+    if sha1 and "sha1" in computed:
+        result["sha1_match"] = computed["sha1"] == expected.get("sha1", "")
+        checks.append(result["sha1_match"])
+    if sha256 and "sha256" in computed:
+        result["sha256_match"] = computed["sha256"] == expected.get("sha256", "")
+        checks.append(result["sha256_match"])
+    if sha512 and "sha512" in computed:
+        result["sha512_match"] = computed["sha512"] == expected.get("sha512", "")
+        checks.append(result["sha512_match"])
+
+    result["all_match"] = bool(checks) and all(checks)
 
     if result["all_match"]:
         logger.info("イメージ検証: ✅ 全ハッシュ一致")
     else:
         logger.error("イメージ検証: ❌ ハッシュ不一致")
-        for algo in ["md5", "sha1", "sha256"]:
-            if not result[f"{algo}_match"]:
+        for algo in ["md5", "sha1", "sha256", "sha512"]:
+            k = f"{algo}_match"
+            if k in result and not result[k]:
                 logger.error(
                     f"  {algo}: expected={expected.get(algo, 'N/A')}, "
-                    f"computed={computed[algo]}")
+                    f"computed={computed.get(algo, 'N/A')}"
+                )
 
     return result

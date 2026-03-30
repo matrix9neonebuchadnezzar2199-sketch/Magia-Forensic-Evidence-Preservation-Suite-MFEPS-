@@ -6,9 +6,10 @@ MFEPS v2.0 — エントリーポイント
 4. 管理者権限チェック
 5. NiceGUI起動
 """
-import sys
 import ctypes
 import logging
+import secrets
+import sys
 from pathlib import Path
 
 # パス設定（src/ をインポートルートに追加）
@@ -43,6 +44,17 @@ def is_admin() -> bool:
         return False
 
 
+def _get_or_create_storage_secret(data_dir: Path) -> str:
+    """NiceGUI storage 署名用の秘密鍵（インスタンスごとに永続化）"""
+    secret_file = data_dir / ".storage_secret"
+    if secret_file.exists():
+        return secret_file.read_text(encoding="utf-8").strip()
+    secret = secrets.token_hex(32)
+    secret_file.parent.mkdir(parents=True, exist_ok=True)
+    secret_file.write_text(secret, encoding="utf-8")
+    return secret
+
+
 def main():
     """メインエントリーポイント"""
     # 1. 設定読込
@@ -71,7 +83,7 @@ def main():
     else:
         logger.warning("管理者権限: ⚠️ 未取得 — デバイスアクセスが制限されます")
 
-    # 6. Storage初期化をstartupイベント内で実行
+    # 7. Storage 初期化を startup イベント内で実行
     _admin = admin
 
     @app.on_startup
@@ -120,10 +132,10 @@ def main():
     def page_audit():
         create_layout(build_audit_page)
 
-    # 9. 法的免責ダイアログは各ページのlayout内で表示
-    # (on_connectはNiceGUI 3.xではUI要素の操作に制限あり)
+    # 9. 法的免責ダイアログは各ページの layout 内で表示
+    # (on_connect は NiceGUI 3.x では UI 要素の操作に制限あり)
 
-    # 10. NiceGUI起動
+    # 10. NiceGUI 起動
     logger.info(
         f"WebUI を {config.bind_address}:{config.mfeps_port} で起動します..."
     )
@@ -135,7 +147,7 @@ def main():
         dark=True,
         reload=False,
         show=False,
-        storage_secret="mfeps-v2-secret-key",
+        storage_secret=_get_or_create_storage_secret(config.data_dir),
     )
 
 

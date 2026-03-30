@@ -71,6 +71,7 @@ class AuditCategory(str, Enum):
     COC = "coc"
     AUTH = "auth"
     CONFIG = "config"
+    LEGAL_CONSENT = "legal_consent"
 
 
 class CaseStatus(str, Enum):

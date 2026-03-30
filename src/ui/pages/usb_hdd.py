@@ -41,6 +41,9 @@ def build_usb_hdd_page():
 
             async def refresh_devices():
                 device_container.clear()
+                state["selected_device"] = None
+                if state.get("step1_next_btn"):
+                    state["step1_next_btn"].disable()
                 status_label.text = "🔍 デバイス検出中..."
 
                 devices = await asyncio.get_event_loop().run_in_executor(
@@ -59,9 +62,11 @@ def build_usb_hdd_page():
                     await check_write_block_status()
                     stepper.next()
 
-                ui.button("次へ →", on_click=on_step1_next, color="primary").props(
-                    "unelevated").bind_enabled_from(state, "selected_device",
-                    backward=lambda v: v is not None)
+                step1_next_btn = ui.button(
+                    "次へ →", on_click=on_step1_next, color="primary"
+                ).props("unelevated")
+                step1_next_btn.disable()
+                state["step1_next_btn"] = step1_next_btn
 
         # ===== STEP 2: プリスキャン・設定 =====
         with ui.step("プリスキャン・設定", icon="search"):
@@ -146,12 +151,17 @@ def build_usb_hdd_page():
                         return
 
                     service = get_imaging_service()
+                    g = app.storage.general
                     job_id = await service.start_imaging(
                         device=state["selected_device"],
                         case_id=case_val,
                         evidence_id=ev_val,
                         verify=verify_checkbox.value,
                         actor_name=get_current_actor_name(),
+                        hash_md5=g.get("hash_md5", True),
+                        hash_sha1=g.get("hash_sha1", True),
+                        hash_sha256=g.get("hash_sha256", True),
+                        hash_sha512=g.get("hash_sha512", False),
                     )
                     state["job_id"] = job_id
 
@@ -259,7 +269,13 @@ def build_usb_hdd_page():
                             
                         # エラーセクタ
                         if res.get("error_count", 0) > 0:
-                            render_error_panel([]) 
+                            sec = state["selected_device"].sector_size if state.get(
+                                "selected_device"
+                            ) else 512
+                            render_error_panel(
+                                res.get("error_sectors", []),
+                                sector_size=sec,
+                            )
                     else:
                         ui.label(f"ジョブが正常に完了しませんでした ({res.get('status', 'unknown')})").classes("text-body1 text-negative")
 
@@ -330,3 +346,5 @@ def _on_device_selected(dev: DeviceInfo, selected_card, state: dict):
                     "transition: opacity 0.3s ease, border-color 0.3s ease;")
 
     ui.notify(f"✅ {dev.model} を選択しました", type="positive", position="bottom", timeout=2000)
+    if state.get("step1_next_btn"):
+        state["step1_next_btn"].enable()

@@ -7,10 +7,11 @@ from typing import Optional
 
 from src.core.optical_engine import OpticalAnalysisResult, OpticalImagingEngine
 from src.core.write_blocker import check_write_protection
-from src.models.database import get_session
+from src.models.database import session_scope
 from src.models.schema import ChainOfCustody, HashRecord, ImagingJob
 from src.services.audit_service import get_audit_service
 from src.utils.config import get_config
+from src.utils.path_sanitize import sanitize_path_component
 
 logger = logging.getLogger("mfeps.optical_service")
 
@@ -34,6 +35,11 @@ class OpticalService:
         use_aacs: bool = False,
         verify: bool = True,
         actor_name: str = "MFEPS Auto",
+        *,
+        hash_md5: bool = True,
+        hash_sha1: bool = True,
+        hash_sha256: bool = True,
+        hash_sha512: bool = False,
     ) -> str:
         
         config = get_config()
@@ -51,8 +57,9 @@ class OpticalService:
             capacity_bytes=analysis.capacity_bytes
         )
 
-        # 出力先ディレクトリ (ディレクトリ名にはユーザー入力のわかりやすい文字列番号を使う)
-        output_dir = config.output_dir / case_id / evidence_id
+        safe_case = sanitize_path_component(case_id)
+        safe_ev = sanitize_path_component(evidence_id)
+        output_dir = config.output_dir / safe_case / safe_ev
         output_dir.mkdir(parents=True, exist_ok=True)
         
         ext = ".iso" if output_format.upper() == "ISO" else ".dd"
@@ -69,27 +76,23 @@ class OpticalService:
             write_block_method = "none"
 
         # DB レコード作成
-        session = get_session()
         try:
-            db_job = ImagingJob(
-                id=job_id,
-                evidence_id=real_evidence_id,
-                status="pending",
-                source_path=drive_path,
-                output_path=output_path,
-                output_format=output_format.lower(),
-                total_bytes=analysis.capacity_bytes,
-                buffer_size=1 * 1024 * 1024, # 光学ドライブ用
-                write_block_method=write_block_method,
-            )
-            session.add(db_job)
-            session.commit()
+            with session_scope() as session:
+                db_job = ImagingJob(
+                    id=job_id,
+                    evidence_id=real_evidence_id,
+                    status="pending",
+                    source_path=drive_path,
+                    output_path=output_path,
+                    output_format=output_format.lower(),
+                    total_bytes=analysis.capacity_bytes,
+                    buffer_size=1 * 1024 * 1024,  # 光学ドライブ用
+                    write_block_method=write_block_method,
+                )
+                session.add(db_job)
         except Exception as e:
-            session.rollback()
             logger.error(f"DB レコード作成失敗: {e}")
             raise
-        finally:
-            session.close()
 
         engine = OpticalImagingEngine()
         self._engines[job_id] = engine
@@ -125,6 +128,10 @@ class OpticalService:
                 use_pydvdcss,
                 use_aacs,
                 progress_cb,
+                hash_md5=hash_md5,
+                hash_sha1=hash_sha1,
+                hash_sha256=hash_sha256,
+                hash_sha512=hash_sha512,
             )
         )
         self._tasks[job_id] = task
@@ -142,6 +149,11 @@ class OpticalService:
         use_pydvdcss,
         use_aacs,
         progress_cb,
+        *,
+        hash_md5: bool = True,
+        hash_sha1: bool = True,
+        hash_sha256: bool = True,
+        hash_sha512: bool = False,
     ):
         actor_for_coc = self._job_actors.pop(job_id, "MFEPS Auto")
         start_time = datetime.now(timezone.utc)
@@ -157,6 +169,10 @@ class OpticalService:
                 use_pydvdcss=use_pydvdcss,
                 use_aacs=use_aacs,
                 progress_callback=progress_cb,
+                hash_md5=hash_md5,
+                hash_sha1=hash_sha1,
+                hash_sha256=hash_sha256,
+                hash_sha512=hash_sha512,
             )
 
             status = result_dict.get("status", "completed")
@@ -181,69 +197,66 @@ class OpticalService:
                 "decrypt_method": decrypt_method,
             })
 
-            session = get_session()
             try:
-                job = session.query(ImagingJob).get(job_id)
-                if job:
-                    job.status = status
-                    job.copied_bytes = copied_bytes
-                    job.error_count = result_dict.get("error_count", 0)
-                    job.completed_at = datetime.now(timezone.utc)
-                    job.elapsed_seconds = elapsed_seconds
-                    job.avg_speed_mbps = avg_speed_mibps
+                with session_scope() as session:
+                    job = session.get(ImagingJob, job_id)
+                    if job:
+                        job.status = status
+                        job.copied_bytes = copied_bytes
+                        job.error_count = result_dict.get("error_count", 0)
+                        job.completed_at = datetime.now(timezone.utc)
+                        job.elapsed_seconds = elapsed_seconds
+                        job.avg_speed_mbps = avg_speed_mibps
 
-                    if decrypt_method:
-                        job.copy_guard_detail = json.dumps(
-                            {
-                                "decrypt_method": decrypt_method,
-                                "media_type": analysis.media_type,
-                                "css_decrypt_requested": use_pydvdcss,
-                                "aacs_decrypt_requested": use_aacs,
-                                "css_scrambled_media": result_dict.get(
-                                    "css_scrambled"
-                                ),
-                                "aacs_mkb_version": result_dict.get(
-                                    "aacs_mkb_version"
-                                ),
-                            },
-                            ensure_ascii=False,
+                        if decrypt_method:
+                            job.copy_guard_detail = json.dumps(
+                                {
+                                    "decrypt_method": decrypt_method,
+                                    "media_type": analysis.media_type,
+                                    "css_decrypt_requested": use_pydvdcss,
+                                    "aacs_decrypt_requested": use_aacs,
+                                    "css_scrambled_media": result_dict.get(
+                                        "css_scrambled"
+                                    ),
+                                    "aacs_mkb_version": result_dict.get(
+                                        "aacs_mkb_version"
+                                    ),
+                                },
+                                ensure_ascii=False,
+                            )
+
+                    sh = result_dict.get("source_hashes") or {}
+                    if sh:
+                        source_hash = HashRecord(
+                            job_id=job_id,
+                            target="source",
+                            md5=sh.get("md5", ""),
+                            sha1=sh.get("sha1", ""),
+                            sha256=sh.get("sha256", ""),
+                            sha512=sh.get("sha512", ""),
+                            match_result="pending",
                         )
+                        session.add(source_hash)
 
-                if result_dict.get("source_hashes"):
-                    source_hash = HashRecord(
-                        job_id=job_id,
-                        target="source",
-                        md5=result_dict["source_hashes"].get("md5", ""),
-                        sha1=result_dict["source_hashes"].get("sha1", ""),
-                        sha256=result_dict["source_hashes"].get("sha256", ""),
-                        match_result="pending",
-                    )
-                    session.add(source_hash)
-
-                if job:
-                    decrypt_note = (
-                        f" [復号: {decrypt_method}]"
-                        if decrypt_method
-                        else ""
-                    )
-                    coc = ChainOfCustody(
-                        evidence_id=job.evidence_id,
-                        action="imaged",
-                        actor_name=actor_for_coc,
-                        description=(
-                            f"光学イメージング {status}: {copied_bytes} bytes"
-                            f"{decrypt_note}"
-                        ),
-                        hash_snapshot=str(result_dict.get("source_hashes")),
-                    )
-                    session.add(coc)
-
-                session.commit()
+                    if job:
+                        decrypt_note = (
+                            f" [復号: {decrypt_method}]"
+                            if decrypt_method
+                            else ""
+                        )
+                        coc = ChainOfCustody(
+                            evidence_id=job.evidence_id,
+                            action="imaged",
+                            actor_name=actor_for_coc,
+                            description=(
+                                f"光学イメージング {status}: {copied_bytes} bytes"
+                                f"{decrypt_note}"
+                            ),
+                            hash_snapshot=str(result_dict.get("source_hashes")),
+                        )
+                        session.add(coc)
             except Exception as db_e:
-                session.rollback()
                 logger.error(f"DB update failed: {db_e}")
-            finally:
-                session.close()
 
             if decrypt_method:
                 audit = get_audit_service()
@@ -281,19 +294,15 @@ class OpticalService:
         return p
 
     def _update_job_status(self, job_id: str, status: str, **kwargs) -> None:
-        session = get_session()
         try:
-            job = session.query(ImagingJob).get(job_id)
-            if job:
-                job.status = status
-                for k, v in kwargs.items():
-                    setattr(job, k, v)
-                session.commit()
+            with session_scope() as session:
+                job = session.get(ImagingJob, job_id)
+                if job:
+                    job.status = status
+                    for k, v in kwargs.items():
+                        setattr(job, k, v)
         except Exception as e:
-            session.rollback()
             logger.error(f"ジョブステータス更新失敗: {e}")
-        finally:
-            session.close()
 
     async def cancel_imaging(self, job_id: str):
         engine = self._engines.get(job_id)

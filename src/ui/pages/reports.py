@@ -51,29 +51,27 @@ def build_reports_page():
         with ui.row().classes("gap-2 q-mt-md"):
             async def generate_all():
                 from src.services.report_service import ReportService
-                from src.models.database import get_session
+                from src.models.database import session_scope
                 from src.models.schema import ImagingJob
-                
+
                 ui.notify("レポート生成を開始しました...")
                 try:
                     svc = ReportService()
-                    session = get_session()
-                    jobs = session.query(ImagingJob).filter(ImagingJob.status == "completed").all()
-                    
+                    with session_scope() as session:
+                        jobs = session.query(ImagingJob).filter(
+                            ImagingJob.status == "completed"
+                        ).all()
+
                     count = 0
                     for job in jobs:
                         svc.generate_pdf(job.id)
                         svc.generate_html(job.id)
                         count += 1
-                        
+
                     ui.notify(f"{count}件のジョブレポートを生成しました", type="positive")
-                    # リロードして一覧に反映
                     ui.timer(1.0, ui.navigate.reload, once=True)
                 except Exception as e:
                     ui.notify(f"レポート生成エラー: {e}", type="negative")
-                finally:
-                    if 'session' in locals():
-                        session.close()
 
             def open_reports_dir():
                 import os, platform, subprocess

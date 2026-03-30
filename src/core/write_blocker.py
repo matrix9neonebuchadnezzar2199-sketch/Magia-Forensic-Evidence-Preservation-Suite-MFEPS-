@@ -135,9 +135,14 @@ def check_write_protection(device_path: str) -> dict:
     except Exception as e:
         logger.warning(f"デバイス書込保護チェック失敗: {e}")
 
-    result["is_protected"] = (result["hardware_blocked"] or
-                              result["software_blocked"] or
-                              result["registry_blocked"])
+    # レジストリ方式はソフトウェアライトブロックとして扱う
+    result["software_blocked"] = result["registry_blocked"]
+
+    result["is_protected"] = (
+        result["hardware_blocked"]
+        or result["software_blocked"]
+        or result["registry_blocked"]
+    )
 
     return result
 
