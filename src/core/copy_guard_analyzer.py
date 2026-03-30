@@ -125,46 +125,47 @@ class CopyGuardAnalyzer:
     # ----- 個別検出メソッド -----
 
     def _check_css(self, drive_path: str) -> ProtectionInfo:
-        """CSS暗号化検出"""
+        """CSS暗号化検出（pydvdcss は dvdcss_reader 経由のみ）"""
         try:
-            from pydvdcss import DvdCss
-            dvd = DvdCss()
-            # ドライブレターからオープン
-            letter = drive_path.replace("\\\\.\\CdRom", "")
-            dvd.open(drive_path)
-            scrambled = dvd.is_scrambled()
-            dvd.close()
+            from src.core.dvdcss_reader import DvdCssReader
 
-            if scrambled:
-                return ProtectionInfo(
-                    type=CopyGuardType.CSS,
-                    detected=True,
-                    can_decrypt=True,
-                    decrypt_method="pydvdcss",
-                    details="CSS暗号化検出 — pydvdcss経由で復号可能",
-                    severity="warning",
-                )
-            else:
-                return ProtectionInfo(
-                    type=CopyGuardType.CSS,
-                    detected=False,
-                    details="CSS暗号化なし",
-                    severity="info",
-                )
+            reader = DvdCssReader()
+            try:
+                reader.open(drive_path)
+                scrambled = reader.is_scrambled
+            finally:
+                reader.close()
+
+            return ProtectionInfo(
+                type=CopyGuardType.CSS,
+                detected=scrambled,
+                can_decrypt=scrambled,
+                decrypt_method="pydvdcss" if scrambled else None,
+                details=(
+                    "CSS暗号化検出 — pydvdcss で復号可能"
+                    if scrambled
+                    else "CSS暗号化なし"
+                ),
+                severity="warning" if scrambled else "info",
+            )
         except ImportError:
             return ProtectionInfo(
                 type=CopyGuardType.CSS,
                 detected=False,
-                details="pydvdcss未インストール — CSS検出スキップ",
+                can_decrypt=False,
+                decrypt_method=None,
+                details="pydvdcss 未インストール — CSS検出スキップ",
                 severity="info",
             )
-        except Exception as e:
-            logger.warning(f"CSS検出エラー: {e}")
+        except OSError as e:
+            logger.warning("CSS検出エラー: %s", e)
             return ProtectionInfo(
                 type=CopyGuardType.CSS,
                 detected=False,
+                can_decrypt=False,
+                decrypt_method=None,
                 details=f"CSS検出エラー: {e}",
-                severity="info",
+                severity="warning",
             )
 
     def _check_region_code(self, drive_path: str,

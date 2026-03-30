@@ -22,8 +22,10 @@ from src.utils.config import get_config
 from src.utils.folder_manager import ensure_project_structure
 from src.utils.logger import setup_logging, get_logger
 from src.models.database import init_database
+from src.services.auth_service import ensure_default_admin
 from src.ui.theme.modern_dark import CUSTOM_CSS, QUASAR_BRAND_COLORS
 from src.ui.layout import create_layout
+from src.ui.pages.login import build_login_page
 from src.ui.pages.dashboard import build_dashboard
 from src.ui.pages.settings import build_settings
 from src.ui.pages.usb_hdd import build_usb_hdd_page
@@ -57,9 +59,10 @@ def main():
     logger.info(f"ベースディレクトリ: {config.base_dir}")
     logger.info("=" * 60)
 
-    # 4. DB初期化
+    # 4. DB初期化 + 初回管理者
     init_database(config.db_path)
     logger.info(f"データベース初期化完了: {config.db_path}")
+    ensure_default_admin()
 
     # 5. 管理者権限チェック
     admin = is_admin()
@@ -78,6 +81,10 @@ def main():
         app.storage.general["is_admin"] = _admin
 
     # 8. ページルーティング
+    @ui.page("/login")
+    def page_login():
+        build_login_page()
+
     @ui.page("/")
     def page_dashboard():
         create_layout(build_dashboard)
@@ -117,8 +124,11 @@ def main():
     # (on_connectはNiceGUI 3.xではUI要素の操作に制限あり)
 
     # 10. NiceGUI起動
-    logger.info(f"WebUI をポート {config.mfeps_port} で起動します...")
+    logger.info(
+        f"WebUI を {config.bind_address}:{config.mfeps_port} で起動します..."
+    )
     ui.run(
+        host=config.bind_address,
         port=config.mfeps_port,
         title="MFEPS — Forensic Evidence Preservation Suite",
         favicon="🔬",

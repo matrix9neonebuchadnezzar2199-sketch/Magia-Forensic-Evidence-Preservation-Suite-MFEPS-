@@ -5,10 +5,16 @@ MFEPS v2.0 — メインレイアウト
 from nicegui import ui, app
 from src.utils.constants import APP_TITLE, COLOR_PRIMARY
 from src.ui.theme.modern_dark import CUSTOM_CSS
+from src.ui.session_auth import require_auth, clear_session
+from src.services.audit_service import get_audit_service
+import json
 
 
 def create_layout(content_builder):
     """メインレイアウトを構築"""
+
+    if not require_auth():
+        return
 
     # ---------- ダークモード設定 ----------
     ui.dark_mode(True)
@@ -27,11 +33,31 @@ def create_layout(content_builder):
             ui.label("Forensic Evidence Preservation Suite").classes(
                 "text-caption text-grey-5 gt-sm")
 
-        # 右: 設定アイコン
-        ui.button(
-            icon="settings",
-            on_click=lambda: ui.navigate.to("/settings")
-        ).props("flat round dense color=white")
+        # 右: ユーザー・ログアウト・設定
+        with ui.row().classes("items-center gap-2"):
+            uname = app.storage.user.get("username", "")
+            dname = app.storage.user.get("display_name", uname)
+            ui.label(dname or "User").classes("text-caption text-grey-4 gt-xs")
+
+            def _logout():
+                audit = get_audit_service()
+                audit.add_entry(
+                    "INFO",
+                    "auth",
+                    f"ログアウト: {uname}",
+                    json.dumps({"username": uname}, ensure_ascii=False),
+                )
+                clear_session()
+                ui.navigate.to("/login")
+
+            ui.button("ログアウト", on_click=_logout).props(
+                "flat dense no-caps color=white"
+            ).classes("text-caption")
+
+            ui.button(
+                icon="settings",
+                on_click=lambda: ui.navigate.to("/settings"),
+            ).props("flat round dense color=white")
 
     # ---------- サイドバー ----------
     with ui.left_drawer(value=True, bordered=True).classes(

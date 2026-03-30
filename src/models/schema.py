@@ -1,7 +1,7 @@
 """
 MFEPS v2.0 — SQLAlchemy ORM モデル定義
-7テーブル: cases, evidence_items, imaging_jobs, hash_records, chain_of_custody,
-audit_log, app_settings
+8テーブル: users, cases, evidence_items, imaging_jobs, hash_records,
+chain_of_custody, audit_log, app_settings
 """
 import uuid
 from datetime import datetime, timezone
@@ -22,6 +22,23 @@ def _utcnow() -> datetime:
 
 class Base(DeclarativeBase):
     pass
+
+
+class User(Base):
+    """WebUI ログインユーザー"""
+
+    __tablename__ = "users"
+
+    id = Column(String(36), primary_key=True, default=_new_uuid)
+    username = Column(String(80), unique=True, nullable=False)
+    password_hash = Column(String(255), nullable=False)
+    display_name = Column(String(200), default="")
+    role = Column(String(20), default="examiner")  # admin / examiner / viewer
+    created_at = Column(DateTime, default=_utcnow)
+    last_login_at = Column(DateTime, nullable=True)
+
+    def __repr__(self):
+        return f"<User {self.username}>"
 
 
 class Case(Base):
@@ -86,6 +103,7 @@ class ImagingJob(Base):
     avg_speed_mbps = Column(Float, default=0.0)
     copy_guard_type = Column(String(100), default="")
     copy_guard_detail = Column(Text, default="")  # JSON
+    write_block_method = Column(String(20), default="none")  # none / software / hardware / both
     notes = Column(Text, default="")
 
     evidence = relationship("EvidenceItem", back_populates="imaging_jobs")

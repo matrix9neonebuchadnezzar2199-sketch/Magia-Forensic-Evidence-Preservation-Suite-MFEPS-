@@ -82,3 +82,11 @@ class CaseStatus(str, Enum):
 class OutputFormat(str, Enum):
     RAW = "raw"
     ISO = "iso"
+
+
+class WriteBlockMethod(str, Enum):
+    """書き込み保護方式"""
+    NONE = "none"
+    SOFTWARE = "software"
+    HARDWARE = "hardware"
+    BOTH = "both"

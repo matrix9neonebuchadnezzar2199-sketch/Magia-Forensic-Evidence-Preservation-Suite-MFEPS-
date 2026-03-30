@@ -35,6 +35,20 @@ def init_database(db_path: Path) -> None:
     # テーブル自動生成
     Base.metadata.create_all(_engine)
 
+    # 既存 DB 向け: imaging_jobs.write_block_method（Phase 3.4）
+    with _engine.connect() as conn:
+        rows = conn.execute(text("PRAGMA table_info(imaging_jobs)")).fetchall()
+        col_names = {r[1] for r in rows}
+        if "write_block_method" not in col_names:
+            conn.execute(
+                text(
+                    "ALTER TABLE imaging_jobs ADD COLUMN write_block_method "
+                    "VARCHAR(20) DEFAULT 'none'"
+                )
+            )
+            conn.commit()
+            logger.info("マイグレーション: imaging_jobs.write_block_method を追加しました")
+
     _session_factory = sessionmaker(bind=_engine, expire_on_commit=False)
 
     logger.info(f"データベース初期化完了: {db_path}")

@@ -1,3 +1,10 @@
+# SPDX-License-Identifier: MIT
+#
+# This module optionally loads libaacs (LGPL-2.1-or-later) via ctypes.
+# libaacs is not bundled with MFEPS. Users must provide libaacs.dll
+# and keydb.cfg separately. LGPL-2.1 dynamic linking is compatible
+# with the MIT License.
+
 """
 MFEPS v2.0 — libaacs 復号リーダー（ctypes）
 AACS 暗号化 BD のセクタ単位復号読取

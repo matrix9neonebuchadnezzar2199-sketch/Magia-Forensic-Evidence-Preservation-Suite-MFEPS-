@@ -14,6 +14,7 @@ from src.ui.components.legal_consent_dialog import (
     show_legal_consent_dialog,
 )
 from src.ui.layout import create_layout
+from src.ui.session_auth import get_current_actor_name
 
 
 def build_optical_page():
@@ -121,6 +122,19 @@ def build_optical_page():
 
                 verify_switch = ui.switch("二回読取検証（高信頼性）", value=False).classes("q-mt-sm")
 
+                with ui.card().classes("q-pa-sm full-width q-mt-md").style(
+                        "border-left: 3px solid #2196F3;"):
+                    with ui.row().classes("items-center gap-2"):
+                        ui.icon("info", color="info", size="sm")
+                        ui.label("書き込み保護について").classes(
+                            "text-weight-bold text-info")
+                    ui.label(
+                        "光学メディアの読取は通常ライトブロック不要ですが、"
+                        "リライタブルメディア（CD-RW, DVD-RW, BD-RE）の場合は "
+                        "書き込みが可能なため注意が必要です。"
+                        "報告書には書き込み保護方式が記録されます。"
+                    ).classes("text-caption text-grey-5 q-mt-xs")
+
             with ui.stepper_navigation():
                 ui.button("← 戻る", on_click=stepper.previous).props("flat")
                 
@@ -155,6 +169,7 @@ def build_optical_page():
                         use_pydvdcss=use_pydvdcss,
                         use_aacs=use_aacs,
                         verify=verify_switch.value,
+                        actor_name=get_current_actor_name(),
                     )
                     state["job_id"] = job_id
                     

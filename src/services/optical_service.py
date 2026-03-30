@@ -6,6 +6,7 @@ from datetime import datetime, timezone
 from typing import Optional
 
 from src.core.optical_engine import OpticalAnalysisResult, OpticalImagingEngine
+from src.core.write_blocker import check_write_protection
 from src.models.database import get_session
 from src.models.schema import ChainOfCustody, HashRecord, ImagingJob
 from src.services.audit_service import get_audit_service
@@ -20,6 +21,7 @@ class OpticalService:
         self._engines: dict[str, OpticalImagingEngine] = {}
         self._tasks: dict[str, asyncio.Task] = {}
         self._progress: dict[str, dict] = {}
+        self._job_actors: dict[str, str] = {}
 
     async def start_optical_imaging(
         self,
@@ -31,6 +33,7 @@ class OpticalService:
         use_pydvdcss: bool = False,
         use_aacs: bool = False,
         verify: bool = True,
+        actor_name: str = "MFEPS Auto",
     ) -> str:
         
         config = get_config()
@@ -55,6 +58,16 @@ class OpticalService:
         ext = ".iso" if output_format.upper() == "ISO" else ".dd"
         output_path = str(output_dir / f"image{ext}")
 
+        wb_status = check_write_protection(drive_path)
+        if wb_status["hardware_blocked"] and wb_status["registry_blocked"]:
+            write_block_method = "both"
+        elif wb_status["hardware_blocked"]:
+            write_block_method = "hardware"
+        elif wb_status["registry_blocked"]:
+            write_block_method = "software"
+        else:
+            write_block_method = "none"
+
         # DB レコード作成
         session = get_session()
         try:
@@ -67,6 +80,7 @@ class OpticalService:
                 output_format=output_format.lower(),
                 total_bytes=analysis.capacity_bytes,
                 buffer_size=1 * 1024 * 1024, # 光学ドライブ用
+                write_block_method=write_block_method,
             )
             session.add(db_job)
             session.commit()
@@ -79,7 +93,8 @@ class OpticalService:
 
         engine = OpticalImagingEngine()
         self._engines[job_id] = engine
-        
+        self._job_actors[job_id] = actor_name
+
         self._progress[job_id] = {
             "status": "pending",
             "copied_bytes": 0,
@@ -128,10 +143,11 @@ class OpticalService:
         use_aacs,
         progress_cb,
     ):
+        actor_for_coc = self._job_actors.pop(job_id, "MFEPS Auto")
         start_time = datetime.now(timezone.utc)
         self._update_job_status(job_id, "imaging", started_at=start_time)
         self._progress[job_id]["status"] = "imaging"
-        
+
         result_dict = {}
         try:
             result_dict = await engine.image_optical(
@@ -213,7 +229,7 @@ class OpticalService:
                     coc = ChainOfCustody(
                         evidence_id=job.evidence_id,
                         action="imaged",
-                        actor_name="MFEPS Auto",
+                        actor_name=actor_for_coc,
                         description=(
                             f"光学イメージング {status}: {copied_bytes} bytes"
                             f"{decrypt_note}"

@@ -10,6 +10,7 @@ from typing import Optional, Callable
 
 from src.core.imaging_engine import ImagingEngine, ImagingJobParams, ImagingResult
 from src.core.device_detector import DeviceInfo
+from src.core.write_blocker import check_write_protection
 from src.models.database import get_session
 from src.models.schema import ImagingJob, HashRecord, ChainOfCustody, AuditLog
 from src.utils.config import get_config
@@ -24,6 +25,7 @@ class ImagingService:
         self._engines: dict[str, ImagingEngine] = {}
         self._tasks: dict[str, asyncio.Task] = {}
         self._results: dict[str, dict] = {}
+        self._job_actors: dict[str, str] = {}
 
 
     async def start_imaging(
@@ -34,6 +36,7 @@ class ImagingService:
         output_format: str = "raw",
         verify: bool = True,
         progress_callback: Optional[Callable] = None,
+        actor_name: str = "MFEPS Auto",
     ) -> str:
         """
         イメージングを開始。
@@ -60,6 +63,16 @@ class ImagingService:
         output_dir = config.output_dir / case_id / evidence_id
         output_dir.mkdir(parents=True, exist_ok=True)
 
+        wb_status = check_write_protection(device.device_path)
+        if wb_status["hardware_blocked"] and wb_status["registry_blocked"]:
+            write_block_method = "both"
+        elif wb_status["hardware_blocked"]:
+            write_block_method = "hardware"
+        elif wb_status["registry_blocked"]:
+            write_block_method = "software"
+        else:
+            write_block_method = "none"
+
         # DB レコード作成
         session = get_session()
         try:
@@ -72,6 +85,7 @@ class ImagingService:
                 output_format=output_format,
                 total_bytes=device.capacity_bytes,
                 buffer_size=config.mfeps_buffer_size,
+                write_block_method=write_block_method,
             )
             session.add(db_job)
             session.commit()
@@ -83,6 +97,7 @@ class ImagingService:
             session.close()
 
         # エンジン作成
+        self._job_actors[job_id] = actor_name
         engine = ImagingEngine(buffer_size=config.mfeps_buffer_size)
         if progress_callback:
             engine.set_progress_callback(progress_callback)
@@ -120,6 +135,7 @@ class ImagingService:
             await self.on_imaging_complete(result)
         except Exception as e:
             logger.error(f"イメージングタスクエラー: {e}")
+            self._job_actors.pop(job_id, None)
             self._update_job_status(job_id, "failed")
             self._results[job_id] = {
                 "status": "failed",
@@ -132,6 +148,7 @@ class ImagingService:
 
     async def on_imaging_complete(self, result: ImagingResult) -> None:
         """イメージング完了処理: DB更新"""
+        actor_name = self._job_actors.pop(result.job_id, "MFEPS Auto")
         session = get_session()
         try:
             # imaging_jobs 更新
@@ -175,7 +192,7 @@ class ImagingService:
                 coc = ChainOfCustody(
                     evidence_id=job.evidence_id,
                     action="imaged",
-                    actor_name="MFEPS Auto",
+                    actor_name=actor_name,
                     description=f"イメージング {result.status}: "
                                 f"{result.copied_bytes} bytes, "
                                 f"{result.elapsed_seconds}s",

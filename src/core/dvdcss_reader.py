@@ -1,3 +1,10 @@
+# SPDX-License-Identifier: MIT
+#
+# This module optionally imports pydvdcss (GPL-3.0).
+# When pydvdcss is not installed, all functionality in this module
+# is disabled and MFEPS falls back to RAW (encrypted) sector reading.
+# MFEPS does not bundle or redistribute pydvdcss.
+
 """
 MFEPS v2.0 — pydvdcss 復号リーダー
 CSS 暗号化 DVD の論理ブロック（2048 バイト）単位の復号読取
@@ -85,7 +92,10 @@ class DvdCssReader:
 
     @property
     def is_scrambled(self) -> bool:
-        return self._is_scrambled
+        """CSS スクランブルの有無を返す。open() 後に呼び出すこと。"""
+        if self._dvd is None:
+            raise OSError("DVD デバイスが開かれていません")
+        return self._dvd.is_scrambled()
 
     def read_sectors(
         self,

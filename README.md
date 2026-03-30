@@ -7,12 +7,16 @@
 [![Python](https://img.shields.io/badge/Python-3.11+-3776AB?logo=python&logoColor=white)](https://www.python.org/)
 [![NiceGUI](https://img.shields.io/badge/UI-NiceGUI_3.x-6C63FF)](https://nicegui.io/)
 [![SQLite](https://img.shields.io/badge/DB-SQLite_WAL-003B57?logo=sqlite)](https://www.sqlite.org/)
-[![License](https://img.shields.io/badge/License-Private-red)](#)
+[![License](https://img.shields.io/badge/License-MIT-green)](./LICENSE)
 [![Platform](https://img.shields.io/badge/Platform-Windows_10%2F11-0078D6?logo=windows)](https://www.microsoft.com/windows)
+
+Language: **日本語** | [English](#english)
 
 </div>
 
 ---
+
+<a id="japanese"></a>
 
 ## 📋 概要
 
@@ -89,6 +93,8 @@ cd mfeps
 以降は **`start.bat` をダブルクリック** するだけで起動できます (UAC 昇格自動)。
 
 ---
+
+<a id="jp-project-structure"></a>
 
 ## 📁 プロジェクト構造
 
@@ -173,6 +179,8 @@ mfeps/
 | **非同期** | asyncio + ダブルバッファリング |
 
 ---
+
+<a id="jp-database-schema"></a>
 
 ## 🗃️ データベーススキーマ
 
@@ -318,7 +326,7 @@ DVDCSS_LIBRARY=./libs/libdvdcss-2.dll              # libdvdcss DLLパス
 > **法的免責事項**: 本ツールはデジタルフォレンジックの証拠保全を目的として設計されています。コピーガード解除機能は、正当な法的権限に基づく証拠保全目的でのみ使用可能です。不正競争防止法および著作権法に違反する使用は固く禁じます。
 
 - 管理者権限が必要です (物理デバイスへのアクセスに必須)
-- `libdvdcss-2.dll` は GPL-2.0 ライセンスです
+- `libdvdcss-2.dll` は GPL-2.0-or-later（オプション・ユーザー配置）。CSS 復号用の `pydvdcss`（GPL-3.0）はオプション依存 — 詳細は [THIRD_PARTY_LICENSES.md](./THIRD_PARTY_LICENSES.md)
 - `libaacs` 使用時はユーザーが `keydb.cfg` を用意する必要があります
 - システムドライブ (C:) への操作は自動的にブロックされます
 
@@ -326,7 +334,204 @@ DVDCSS_LIBRARY=./libs/libdvdcss-2.dll              # libdvdcss DLLパス
 
 ## 📝 ライセンス
 
-Private — 個人利用限定
+本プロジェクトは **MIT License** の下で公開されています。詳細は [LICENSE](./LICENSE) を参照してください。
+
+### サードパーティ ライセンス
+
+MFEPS が依存する外部ライブラリのライセンス情報は [THIRD_PARTY_LICENSES.md](./THIRD_PARTY_LICENSES.md) を参照してください。
+
+> **GPL 分離方針**: CSS 復号機能に使用する `pydvdcss` (GPL-3.0) はオプション依存です。
+> MFEPS 本体は pydvdcss なしで完全に動作します（CSS 復号が無効になるのみ）。
+> pydvdcss をインストールして使用する場合、そのコンポーネントに GPL-3.0 が適用されます。
+> libaacs (LGPL-2.1) は動的リンク (ctypes) のため、MIT ライセンスとの互換性に問題はありません。
+
+---
+
+<a id="english"></a>
+
+<!-- ============================================================ -->
+<!-- ENGLISH SECTION                                               -->
+<!-- ============================================================ -->
+
+<div align="center">
+
+# 🔬 MFEPS — Magia Forensic Evidence Preservation Suite v2.0
+
+**Pure-Python Digital Forensic Evidence Preservation Suite**
+
+Language: [日本語](#japanese) | **English**
+
+</div>
+
+---
+
+## 📋 Overview
+
+MFEPS is a portable forensic imaging tool specialized for **USB/HDD and optical media (CD/DVD/Blu-ray)** on Windows.
+
+It requires **no installation** — just run with administrator privileges and access the full feature set through a browser-based WebUI.
+
+| Feature | Description |
+|---------|-------------|
+| 🔒 RAW Sector Imaging | Direct physical device access via Win32 API (`CreateFileW` / `ReadFile`) |
+| ⚡ Double Buffering | Asynchronous read/process overlap for maximum throughput |
+| 🔑 Triple Hash Verification | Simultaneous streaming MD5 + SHA-1 + SHA-256 |
+| 💿 Optical Media Support | CD-DA (2352 B/sector), DVD, BD — RAW imaging + TOC analysis |
+| 🛡️ Copy Protection Detection | 10 types: CSS, AACS, ARccOS, Disney X-Project, CCCD, and more |
+| 📄 Automated Reporting | PDF / HTML forensic reports |
+| ⛓️ Chain of Custody | Full evidence chain recording, timeline view, and export |
+| 📋 Audit Log | Tamper-evident SHA-256 hash-chained audit trail |
+| 🔐 Authentication | Local password authentication with session management |
+| ⚖️ Legal Compliance | Designed per Japanese Digital Forensic Guidelines (10th ed.) / NIST CFTT |
+
+## 🚀 Quick Start
+
+### Prerequisites
+
+- **Windows 10 / 11** (x64)
+- **Python 3.11+** (portable edition can be bundled)
+- **Administrator privileges** (required for physical device access)
+
+### Option 1: Development
+
+```bash
+cd mfeps
+pip install -r requirements.txt
+python src/main.py
+```
+
+Open **http://localhost:8580** in your browser.
+
+### Option 2: Portable (Recommended)
+
+```powershell
+cd mfeps
+.\setup_portable.ps1       # Auto-setup Python Embedded + dependencies
+```
+
+Then double-click **`start.bat`** (UAC elevation is automatic).
+
+### Optional: CSS Decryption
+
+To enable CSS decryption for DVD forensic imaging:
+
+```bash
+pip install pydvdcss>=1.4.0
+```
+
+Place `libdvdcss-2.dll` in the `./libs/` directory. Note: pydvdcss is licensed under GPL-3.0. See [THIRD_PARTY_LICENSES.md](./THIRD_PARTY_LICENSES.md) for details.
+
+## ⚙️ Tech Stack
+
+| Category | Technology |
+|----------|-----------|
+| **Language** | Python 3.11+ (Pure Python) |
+| **WebUI** | NiceGUI 3.x (FastAPI + Vue/Quasar) |
+| **Database** | SQLite 3 (WAL mode, SQLAlchemy ORM) |
+| **Disk I/O** | ctypes + Win32 API (`CreateFileW`, `ReadFile`, `DeviceIoControl`) |
+| **Hashing** | hashlib (MD5 + SHA-1 + SHA-256 streaming) |
+| **Optical** | SCSI Pass-Through (`READ CD` CDB 0xBE) |
+| **DVD Decrypt** | pydvdcss / libdvdcss (optional, GPL-3.0) |
+| **BD Decrypt** | libaacs (optional, LGPL-2.1, user-provided keydb.cfg) |
+| **PDF** | ReportLab |
+| **Timestamps** | RFC 3161 (rfc3161ng) |
+| **Async** | asyncio + double buffering |
+
+## 📁 Project Structure
+
+See [プロジェクト構造 (Japanese)](#jp-project-structure) — the directory tree and file descriptions are language-independent.
+
+## 🗃️ Database Schema
+
+See [データベーススキーマ (Japanese)](#jp-database-schema) — the Mermaid ER diagram is shared.
+
+## 🔒 Security Design
+
+### Software Write Blocker
+
+MFEPS applies a registry-based write-block (`StorageDevicePolicies\WriteProtect = 1`), verifies hardware write-blocker presence via `IOCTL_DISK_IS_WRITABLE`, and performs a write-open test as a final check.
+
+> **Limitation**: Software write-blocking operates at the Windows kernel level
+> (registry-based) and cannot prevent BIOS/UEFI-level or USB firmware-level writes.
+> For court-admissible evidence, use a hardware write blocker (e.g., Tableau, CRU)
+> in combination with MFEPS's software write-block. Reports automatically flag the
+> protection method used and display warnings when only software protection is active.
+
+### Hash-Chained Audit Log
+
+```
+Entry[0]: hash = SHA256("GENESIS")
+Entry[n]: hash = SHA256(Entry[n-1].hash | timestamp | level | category | message | detail)
+```
+
+Each entry includes the previous entry's hash, enabling detection of any mid-chain tampering.
+
+### Authentication
+
+Local password authentication with bcrypt hashing and session-based access control. All login/logout events are recorded in the hash-chained audit log.
+
+## 🛡️ Copy Protection Detection
+
+| Protection | Media | Detection | Decrypt |
+|-----------|-------|-----------|---------|
+| CSS | DVD | pydvdcss | ✅ (optional) |
+| Region Code | DVD | VMG IFO analysis | ✅ |
+| Macrovision/APS | DVD | IFO flags | N/A (no RAW impact) |
+| UOP | DVD | IFO flags | N/A |
+| Sony ARccOS | DVD | 99-track + bad-sector pattern | ✅ |
+| Disney X-Project | DVD | Anomalous VTS count + size | ✅ |
+| AACS | BD | MKB/AACS directory scan | ⚠️ (keydb.cfg required) |
+| BD+ | BD | BDSVM signature | ⚠️ (libbdplus required) |
+| Cinavia | BD | Audio analysis | ❌ |
+| CCCD | CD | Multi-session structure | ✅ |
+
+## 📄 Configuration (.env)
+
+```ini
+MFEPS_PORT=8580                    # WebUI port
+MFEPS_OUTPUT_DIR=./output          # Image output directory
+MFEPS_BUFFER_SIZE=1048576          # Buffer size (1 MiB)
+MFEPS_THEME=dark                   # Theme (dark/light)
+MFEPS_FONT_SIZE=16                 # Font size (12-24)
+MFEPS_RFC3161_ENABLED=false        # RFC 3161 timestamping
+MFEPS_RFC3161_TSA_URL=http://timestamp.digicert.com
+MFEPS_DOUBLE_READ_OPTICAL=false    # Double-read optical media
+MFEPS_LOG_LEVEL=INFO               # Log level
+DVDCSS_LIBRARY=./libs/libdvdcss-2.dll
+BIND_ADDRESS=127.0.0.1             # WebUI bind address
+SESSION_TIMEOUT_HOURS=8            # Session timeout
+```
+
+## ⚖️ Legal Compliance
+
+This tool is designed in accordance with:
+
+- **IDF (Institute of Digital Forensics) Evidence Preservation Guidelines, 10th Edition** (Japan)
+- **NIST CFTT (Computer Forensics Tool Testing)**
+- **Best Practice**: Write-block → Triple hash → Verify → Chain of Custody
+
+## ⚠️ Disclaimer
+
+> **Legal Notice**: This tool is designed exclusively for digital forensic evidence preservation.
+> Copy protection analysis features are intended only for use under lawful authority
+> for evidence preservation purposes. Use in violation of the Unfair Competition
+> Prevention Act (Japan) or Copyright Act (Japan) is strictly prohibited.
+
+- Administrator privileges are required for physical device access
+- `libdvdcss-2.dll` is GPL-2.0-or-later; `pydvdcss` is GPL-3.0 (optional, not bundled)
+- `libaacs` requires user-provided `keydb.cfg`
+- Operations on the system drive (C:) are automatically blocked
+
+## 📝 License
+
+This project is licensed under the **MIT License**. See [LICENSE](./LICENSE).
+
+For third-party license details, see [THIRD_PARTY_LICENSES.md](./THIRD_PARTY_LICENSES.md).
+
+> **GPL Isolation Policy**: `pydvdcss` (GPL-3.0), used for CSS decryption, is an optional dependency.
+> MFEPS operates fully without it (CSS decryption is simply disabled).
+> If you install pydvdcss, GPL-3.0 applies to that component.
+> `libaacs` (LGPL-2.1) is loaded via ctypes (dynamic linking), which is compatible with the MIT License.
 
 ---
 

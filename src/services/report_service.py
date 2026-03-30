@@ -125,6 +125,38 @@ class ReportService:
                 c.drawString(50, y, s)
                 y -= 14
 
+            # 書き込み保護方式
+            y -= 30
+            c.setFont("Helvetica-Bold", 12)
+            c.drawString(30, y, "■ 書き込み保護")
+            y -= 18
+            c.setFont("Helvetica", 10)
+
+            wb_method = data.get("write_block_method", "none")
+            wb_labels = {
+                "both": "ハードウェア + ソフトウェア（最高信頼性）",
+                "hardware": "ハードウェアライトブロッカー",
+                "software": "ソフトウェアのみ（レジストリ方式）",
+                "none": "未使用",
+            }
+            c.drawString(50, y, f"方式: {wb_labels.get(wb_method, wb_method)}")
+            y -= 14
+
+            if wb_method == "software":
+                c.setFillColor(HexColor("#FF9800"))
+                c.drawString(50, y, "⚠ ソフトウェアライトブロックは法廷証拠として")
+                y -= 14
+                c.drawString(50, y, "  ハードウェア方式と同等の信頼性を保証しません。")
+                y -= 14
+                c.drawString(50, y, "  ハードウェアライトブロッカーとの併用を推奨します。")
+                c.setFillColor(HexColor("#000000"))
+                y -= 14
+            elif wb_method == "none":
+                c.setFillColor(HexColor("#FF5252"))
+                c.drawString(50, y, "⚠ 書き込み保護が未使用です。証拠保全として不適切な可能性があります。")
+                c.setFillColor(HexColor("#000000"))
+                y -= 14
+
             c.showPage()
             c.save()
 
@@ -202,7 +234,37 @@ th {{ background: #f0f0f0; }}
 <tr><th>平均速度</th><td>{data.get('avg_speed', 0):.1f} MiB/s</td></tr>
 <tr><th>エラーセクタ</th><td>{data.get('error_count', 0)}</td></tr>
 </table>
+"""
 
+        wb_method = data.get("write_block_method", "none")
+        wb_labels = {
+            "both": "ハードウェア + ソフトウェア（最高信頼性）",
+            "hardware": "ハードウェアライトブロッカー",
+            "software": "ソフトウェアのみ（レジストリ方式）",
+            "none": "未使用",
+        }
+        wb_warning = ""
+        if wb_method == "software":
+            wb_warning = (
+                '<p style="color: #FF9800;">⚠ ソフトウェアライトブロックは法廷証拠として'
+                "ハードウェア方式と同等の信頼性を保証しません。"
+                "ハードウェアライトブロッカーとの併用を推奨します。</p>"
+            )
+        elif wb_method == "none":
+            wb_warning = (
+                '<p style="color: #FF1744;">⚠ 書き込み保護が未使用です。'
+                "証拠保全として不適切な可能性があります。</p>"
+            )
+
+        html += f"""
+<h2>書き込み保護</h2>
+<table>
+<tr><th>保護方式</th><td>{wb_labels.get(wb_method, wb_method)}</td></tr>
+</table>
+{wb_warning}
+"""
+
+        html += f"""
 <hr>
 <p><small>本報告書は MFEPS v{APP_VERSION} により自動生成されました。</small></p>
 </body>
@@ -251,6 +313,7 @@ th {{ background: #f0f0f0; }}
                 "elapsed_seconds": job.elapsed_seconds,
                 "avg_speed": job.avg_speed_mbps,
                 "error_count": job.error_count,
+                "write_block_method": job.write_block_method or "none",
             }
         finally:
             session.close()

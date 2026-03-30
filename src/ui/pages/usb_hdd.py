@@ -12,6 +12,7 @@ from src.ui.components.progress_panel import (
 )
 from src.ui.layout import create_layout
 from src.services.imaging_service import get_imaging_service
+from src.ui.session_auth import get_current_actor_name
 
 
 def build_usb_hdd_page():
@@ -27,6 +28,7 @@ def build_usb_hdd_page():
         "job_id": None,
         "result": None,
     }
+    wb_ui: dict = {}
 
     with ui.stepper().classes("full-width").props("vertical animated") as stepper:
 
@@ -53,7 +55,11 @@ def build_usb_hdd_page():
             ui.button("🔄 デバイス検出", on_click=refresh_devices, color="primary").props("unelevated")
 
             with ui.stepper_navigation():
-                ui.button("次へ →", on_click=lambda: stepper.next(), color="primary").props(
+                async def on_step1_next():
+                    await check_write_block_status()
+                    stepper.next()
+
+                ui.button("次へ →", on_click=on_step1_next, color="primary").props(
                     "unelevated").bind_enabled_from(state, "selected_device",
                     backward=lambda v: v is not None)
 
@@ -78,6 +84,52 @@ def build_usb_hdd_page():
 
                 verify_checkbox = ui.checkbox("コピー後にハッシュ検証を実行", value=True).classes("q-mt-sm")
 
+                wb_banner = ui.card().classes("q-pa-sm full-width q-mt-md").style(
+                    "border-left: 3px solid #FF9800; display: none;")
+                with wb_banner:
+                    with ui.row().classes("items-center gap-2"):
+                        ui.icon("warning", color="warning", size="sm")
+                        wb_title = ui.label("ソフトウェアライトブロック使用中").classes(
+                            "text-weight-bold text-warning")
+                    wb_body = ui.label(
+                        "現在、レジストリ方式のソフトウェアライトブロックのみが有効です。"
+                        "法廷証拠として提出する場合は、ハードウェアライトブロッカー"
+                        "（Tableau, CRU 等）との併用を推奨します。"
+                    ).classes("text-caption text-grey-5 q-mt-xs")
+                wb_ui["banner"] = wb_banner
+                wb_ui["title"] = wb_title
+                wb_ui["body"] = wb_body
+
+            async def check_write_block_status():
+                if not state.get("selected_device"):
+                    return
+                wb = await asyncio.get_event_loop().run_in_executor(
+                    None, check_write_protection, state["selected_device"].device_path)
+                banner = wb_ui.get("banner")
+                title = wb_ui.get("title")
+                body = wb_ui.get("body")
+                if not banner or not title or not body:
+                    return
+                if wb["registry_blocked"] and not wb["hardware_blocked"]:
+                    title.text = "ソフトウェアライトブロック使用中"
+                    body.text = (
+                        "現在、レジストリ方式のソフトウェアライトブロックのみが有効です。"
+                        "法廷証拠として提出する場合は、ハードウェアライトブロッカー"
+                        "（Tableau, CRU 等）との併用を推奨します。"
+                    )
+                    banner.style(
+                        replace="border-left: 3px solid #FF9800; display: block;")
+                elif not wb["is_protected"]:
+                    title.text = "書き込み保護なし"
+                    body.text = (
+                        "このデバイスに対して書き込み保護が検出されませんでした。"
+                        "証拠保全として不適切な可能性があります。"
+                    )
+                    banner.style(
+                        replace="border-left: 3px solid #FF5252; display: block;")
+                else:
+                    banner.style(replace="display: none;")
+
             with ui.stepper_navigation():
                 ui.button("← 戻る", on_click=stepper.previous).props("flat")
                 
@@ -99,6 +151,7 @@ def build_usb_hdd_page():
                         case_id=case_val,
                         evidence_id=ev_val,
                         verify=verify_checkbox.value,
+                        actor_name=get_current_actor_name(),
                     )
                     state["job_id"] = job_id
 

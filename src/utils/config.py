@@ -18,6 +18,13 @@ class MFEPSConfig(BaseSettings):
 
     # サーバー
     mfeps_port: int = Field(default=8580, description="WebUI ポート番号")
+    bind_address: str = Field(
+        default="127.0.0.1",
+        description="バインドアドレス（127.0.0.1 でローカルのみ）",
+    )
+    session_timeout_hours: int = Field(
+        default=8, ge=1, le=168, description="セッション有効期限（時間）"
+    )
 
     # 出力
     mfeps_output_dir: str = Field(default="./output", description="出力先ディレクトリ")
