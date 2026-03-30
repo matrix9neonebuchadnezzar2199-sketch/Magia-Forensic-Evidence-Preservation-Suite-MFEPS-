@@ -45,6 +45,16 @@ class MFEPSConfig(BaseSettings):
     dvdcss_library: str = Field(
         default="./libs/libdvdcss-2.dll", description="libdvdcss DLL パス")
 
+    # AACS (Blu-ray)
+    aacs_library: str = Field(
+        default="./libs/libaacs.dll", description="libaacs DLL パス")
+    aacs_keydb_path: str = Field(
+        default="", description="AACS keydb.cfg パス（空の場合は復号スキップ）")
+
+    # MakeMKV（将来のバックエンドB用）
+    makemkvcon_path: str = Field(
+        default="", description="makemkvcon パス（空の場合は未使用）")
+
     model_config = {
         "env_file": ".env",
         "env_file_encoding": "utf-8",

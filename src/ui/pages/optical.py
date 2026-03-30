@@ -134,18 +134,27 @@ def build_optical_page():
                     
                     from src.services.optical_service import get_optical_service
                     svc = get_optical_service()
+                    prots = state["guard_result"].protections
+                    use_pydvdcss = any(
+                        getattr(p.type, "value", p.type) == CopyGuardType.CSS.value
+                        and p.can_decrypt
+                        for p in prots
+                    )
+                    use_aacs = any(
+                        getattr(p.type, "value", p.type) == CopyGuardType.AACS.value
+                        and p.detected
+                        and p.can_decrypt
+                        for p in prots
+                    )
                     job_id = await svc.start_optical_imaging(
                         drive_path=state["selected_drive"].device_path,
                         case_id=case_val,
                         evidence_id=ev_val,
                         analysis=state["analysis"],
                         output_format=format_select.value,
-                        use_pydvdcss=any(
-                            getattr(p.type, "value", p.type) == CopyGuardType.CSS.value
-                            and p.can_decrypt
-                            for p in state["guard_result"].protections
-                        ),
-                        verify=verify_switch.value
+                        use_pydvdcss=use_pydvdcss,
+                        use_aacs=use_aacs,
+                        verify=verify_switch.value,
                     )
                     state["job_id"] = job_id
                     

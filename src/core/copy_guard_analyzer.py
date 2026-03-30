@@ -337,26 +337,81 @@ class CopyGuardAnalyzer:
 
     def _check_disney_xproject(self, drive_path: str,
                                 info: OpticalAnalysisResult) -> ProtectionInfo:
-        """Disney X-Project DRM検出 — 異常VTS数"""
+        """
+        Disney X-Project DRM検出 — VTS 数 + TT_SRPT 由来のサイズ分布ヒューリスティクス
+        """
         try:
             handle = open_device(drive_path)
             try:
-                # VIDEO_TS 内のVTS_XX_0.IFOファイル数を推測
-                # (実際にはファイルシステム解析が必要)
-                data = read_sectors(handle, 2048 * 257, 2048)
-                if data[:12] == b'DVDVIDEO-VMG':
-                    # VMGのNumber of Title Sets
-                    vts_count = int.from_bytes(data[0x3E:0x40], "big")
-                    if vts_count > 50:
-                        return ProtectionInfo(
-                            type=CopyGuardType.DISNEY_XPROJECT,
-                            detected=True,
-                            can_decrypt=True,
-                            details=f"疑わしいVTS数: {vts_count} — X-Projectの可能性",
-                            severity="warning",
-                        )
+                vmg_data = read_sectors(handle, 2048 * 257, 2048 * 8)
+                if vmg_data[:12] != b'DVDVIDEO-VMG':
+                    raise ValueError("VMG IFO シグネチャ不一致")
+
+                vts_count = int.from_bytes(vmg_data[0x3E:0x40], "big")
+                if vts_count == 0:
+                    raise ValueError("VTS数が0")
+
+                tt_srpt_sector = int.from_bytes(vmg_data[0xC4:0xC8], "big")
+                vts_start_sectors: list[tuple[int, int]] = []
+
+                if tt_srpt_sector > 0:
+                    tt_byte_offset = (257 + tt_srpt_sector) * 2048
+                    tt_data = read_sectors(handle, tt_byte_offset, 2048 * 4)
+                    if len(tt_data) >= 8:
+                        num_titles = int.from_bytes(tt_data[0:2], "big")
+                        for t_idx in range(min(num_titles, 99)):
+                            entry_offset = 8 + (t_idx * 12)
+                            if entry_offset + 12 > len(tt_data):
+                                break
+                            vts_num = tt_data[entry_offset]
+                            start_sector = int.from_bytes(
+                                tt_data[entry_offset + 4: entry_offset + 8],
+                                "big",
+                            )
+                            vts_start_sectors.append((vts_num, start_sector))
+
+                small_vts_count = 0
+                vts_sizes: list[int] = []
+
+                if len(vts_start_sectors) >= 2:
+                    sorted_sectors = sorted({s for _, s in vts_start_sectors})
+                    for i in range(len(sorted_sectors) - 1):
+                        size_sectors = sorted_sectors[i + 1] - sorted_sectors[i]
+                        size_bytes = size_sectors * 2048
+                        vts_sizes.append(size_bytes)
+                        if size_bytes < 1_048_576:
+                            small_vts_count += 1
+
+                details_parts: list[str] = []
+
+                if vts_count > 50:
+                    details_parts.append(f"異常VTS数: {vts_count}")
+
+                has_dummy_majority = False
+                if vts_sizes and small_vts_count > len(vts_sizes) // 2:
+                    has_dummy_majority = True
+                    details_parts.append(
+                        f"小VTS {small_vts_count}/{len(vts_sizes)}"
+                        f"（1MiB未満）"
+                    )
+
+                if vts_count > 50 or (
+                        vts_count > 20 and has_dummy_majority):
+                    combined = ", ".join(details_parts)
+                    return ProtectionInfo(
+                        type=CopyGuardType.DISNEY_XPROJECT,
+                        detected=True,
+                        can_decrypt=True,
+                        details=(
+                            f"Disney X-Project検出: {combined} "
+                            f"— RAWコピー可能"
+                        ),
+                        severity="warning",
+                    )
+
             finally:
                 close_device(handle)
+
         except Exception as e:
             logger.debug(f"Disney X-Project検出エラー: {e}")
 
@@ -369,32 +424,59 @@ class CopyGuardAnalyzer:
 
     def _check_aacs(self, drive_path: str,
                      info: OpticalAnalysisResult) -> ProtectionInfo:
-        """AACS暗号化検出"""
+        """AACS暗号化検出 — libaacs + keydb.cfg の利用可否を含む"""
+        aacs_detected = False
+
         try:
             handle = open_device(drive_path)
             try:
-                # AACS/ ディレクトリの存在確認（ファイルシステム読取）
                 for offset_mb in [0, 1, 2, 4]:
-                    data = read_sectors(handle, offset_mb * 1024 * 1024, 2048 * 4)
-                    if b'AACS' in data or b'MKB_RW' in data:
-                        return ProtectionInfo(
-                            type=CopyGuardType.AACS,
-                            detected=True,
-                            can_decrypt=False,
-                            decrypt_method="libaacs",
-                            details="AACS暗号化検出 — libaacs + keydb.cfg が必要",
-                            severity="critical",
-                        )
+                    data = read_sectors(
+                        handle, offset_mb * 1024 * 1024, 2048 * 4
+                    )
+                    if b"AACS" in data or b"MKB_RW" in data:
+                        aacs_detected = True
+                        break
             finally:
                 close_device(handle)
         except Exception as e:
             logger.debug(f"AACS検出エラー: {e}")
 
+        if not aacs_detected:
+            return ProtectionInfo(
+                type=CopyGuardType.AACS,
+                detected=False,
+                details="AACS暗号化なし",
+                severity="info",
+            )
+
+        can_decrypt = False
+        decrypt_detail = "libaacs + keydb.cfg が必要"
+
+        try:
+            from src.core.aacs_reader import AacsReader
+
+            reader = AacsReader()
+            can_decrypt = reader.open(drive_path)
+            if can_decrypt:
+                decrypt_detail = (
+                    f"libaacs 復号可能 (MKB v{reader.mkb_version})"
+                )
+            reader.close()
+        except ImportError:
+            decrypt_detail = "aacs_reader モジュール読込失敗"
+        except OSError:
+            decrypt_detail = "libaacs DLL ロード失敗"
+        except Exception as e:
+            decrypt_detail = f"libaacs 初期化エラー: {e}"
+
         return ProtectionInfo(
             type=CopyGuardType.AACS,
-            detected=False,
-            details="AACS暗号化なし",
-            severity="info",
+            detected=True,
+            can_decrypt=can_decrypt,
+            decrypt_method="libaacs" if can_decrypt else None,
+            details=f"AACS暗号化検出 — {decrypt_detail}",
+            severity="warning" if can_decrypt else "critical",
         )
 
     def _check_bdplus(self, drive_path: str,

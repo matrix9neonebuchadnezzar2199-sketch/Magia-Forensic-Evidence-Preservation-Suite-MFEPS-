@@ -191,14 +191,14 @@ class OpticalImagingEngine:
         output_path: str,
         analysis: OpticalAnalysisResult,
         use_pydvdcss: bool = False,
+        use_aacs: bool = False,
         progress_callback: Optional[Callable] = None,
     ) -> dict:
         """
         光学メディアをイメージングする。
 
-        use_pydvdcss=True の場合: DvdCssReader で CSS 復号しつつ読取。
-        初期化失敗・ImportError 時は RAW にフォールバック。
-        ハッシュは書き込んだバイト列（復号後）に対して計算する。
+        use_pydvdcss: DvdCssReader（CSS）。use_aacs: AacsReader（AACS）。
+        いずれも初期化失敗時は RAW にフォールバック。
         """
         start_time = time.time()
         hash_engine = TripleHashEngine()
@@ -209,21 +209,25 @@ class OpticalImagingEngine:
         total_sectors = analysis.sector_count
         total_bytes = total_sectors * sector_size
 
-        css_reader: Any = None  # DvdCssReader | None
+        css_reader: Any = None
+        aacs_reader: Any = None
         decrypt_pydvdcss = False
+        decrypt_aacs = False
         decrypt_method: str | None = None
         css_scrambled_snapshot: bool | None = None
+        aacs_mkb_snapshot: int | None = None
 
         logger.info(
             f"光学イメージング開始: {drive_path}, "
             f"sectors={total_sectors}, sector_size={sector_size}, "
-            f"use_pydvdcss={use_pydvdcss}")
+            f"use_pydvdcss={use_pydvdcss}, use_aacs={use_aacs}"
+        )
 
         handle = None
         output_file = None
 
         try:
-            # ----- pydvdcss（CSS 復号）初期化 -----
+            # ----- pydvdcss（CSS） -----
             if use_pydvdcss:
                 if sector_size != 2048:
                     logger.warning(
@@ -258,7 +262,40 @@ class OpticalImagingEngine:
                         use_pydvdcss = False
                         decrypt_method = None
 
-            if not decrypt_pydvdcss:
+            # ----- libaacs（AACS）— CSS と同時には使わない -----
+            if use_aacs and not decrypt_pydvdcss:
+                if sector_size != 2048:
+                    logger.warning(
+                        "libaacs は 2048 バイト/セクタのみ想定のため RAW にフォールバック "
+                        f"(sector_size={sector_size})"
+                    )
+                    use_aacs = False
+                else:
+                    try:
+                        from src.core.aacs_reader import AacsReader as _Aacs
+
+                        aacs_reader = _Aacs()
+                        if aacs_reader.open(drive_path):
+                            decrypt_aacs = True
+                            decrypt_method = "libaacs"
+                            aacs_mkb_snapshot = aacs_reader.mkb_version
+                            logger.info(
+                                "AACS復号モード有効: MKB v%s",
+                                aacs_mkb_snapshot,
+                            )
+                        else:
+                            logger.warning("libaacs 復号不可 — RAW フォールバック")
+                            aacs_reader = None
+                            use_aacs = False
+                    except Exception as e:
+                        logger.warning(
+                            "libaacs 初期化失敗 — RAW フォールバック: %s", e
+                        )
+                        aacs_reader = None
+                        use_aacs = False
+                        decrypt_method = None
+
+            if not decrypt_pydvdcss and not decrypt_aacs:
                 handle = open_device(drive_path)
 
             Path(output_path).parent.mkdir(parents=True, exist_ok=True)
@@ -286,6 +323,11 @@ class OpticalImagingEngine:
                                 chunk_start_lba,
                                 chunk_sectors,
                                 is_title_start=(chunk_start_lba == 0),
+                            )
+                        elif decrypt_aacs and aacs_reader:
+                            data = aacs_reader.read_sectors(
+                                chunk_start_lba,
+                                chunk_sectors,
                             )
                         elif analysis.media_type == "CD-DA":
                             data = scsi_read_cd(
@@ -316,15 +358,18 @@ class OpticalImagingEngine:
                 current_lba += chunk_sectors
 
                 if progress_callback:
+                    _dm = (
+                        "pydvdcss"
+                        if decrypt_pydvdcss
+                        else ("libaacs" if decrypt_aacs else "raw")
+                    )
                     progress_callback({
                         "copied_bytes": copied_bytes,
                         "total_bytes": total_bytes,
                         "current_lba": current_lba,
                         "total_sectors": total_sectors,
                         "error_count": error_count,
-                        "decrypt_mode": (
-                            "pydvdcss" if decrypt_pydvdcss else "raw"
-                        ),
+                        "decrypt_mode": _dm,
                     })
 
             output_file.flush()
@@ -344,6 +389,8 @@ class OpticalImagingEngine:
                 close_device(handle)
             if css_reader:
                 css_reader.close()
+            if aacs_reader:
+                aacs_reader.close()
 
         elapsed = time.time() - start_time
         source_hashes = hash_engine.hexdigests()
@@ -365,6 +412,7 @@ class OpticalImagingEngine:
             "output_path": output_path,
             "decrypt_method": decrypt_method,
             "css_scrambled": css_scrambled_snapshot,
+            "aacs_mkb_version": aacs_mkb_snapshot,
         }
 
     async def cancel(self):

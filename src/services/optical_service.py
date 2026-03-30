@@ -29,7 +29,8 @@ class OpticalService:
         analysis: OpticalAnalysisResult,
         output_format: str = "ISO",
         use_pydvdcss: bool = False,
-        verify: bool = True
+        use_aacs: bool = False,
+        verify: bool = True,
     ) -> str:
         
         config = get_config()
@@ -99,13 +100,34 @@ class OpticalService:
             pass # (This can be refined, but for now we rely on the object state)
 
         # 非同期タスク起動
-        task = asyncio.create_task(self._run_imaging(job_id, engine, drive_path, output_path, analysis, use_pydvdcss, progress_cb))
+        task = asyncio.create_task(
+            self._run_imaging(
+                job_id,
+                engine,
+                drive_path,
+                output_path,
+                analysis,
+                use_pydvdcss,
+                use_aacs,
+                progress_cb,
+            )
+        )
         self._tasks[job_id] = task
 
         logger.info(f"光学イメージングジョブ開始: {job_id}")
         return job_id
 
-    async def _run_imaging(self, job_id, engine: OpticalImagingEngine, drive_path, output_path, analysis, use_pydvdcss, progress_cb):
+    async def _run_imaging(
+        self,
+        job_id,
+        engine: OpticalImagingEngine,
+        drive_path,
+        output_path,
+        analysis,
+        use_pydvdcss,
+        use_aacs,
+        progress_cb,
+    ):
         start_time = datetime.now(timezone.utc)
         self._update_job_status(job_id, "imaging", started_at=start_time)
         self._progress[job_id]["status"] = "imaging"
@@ -117,6 +139,7 @@ class OpticalService:
                 output_path=output_path,
                 analysis=analysis,
                 use_pydvdcss=use_pydvdcss,
+                use_aacs=use_aacs,
                 progress_callback=progress_cb,
             )
 
@@ -159,8 +182,12 @@ class OpticalService:
                                 "decrypt_method": decrypt_method,
                                 "media_type": analysis.media_type,
                                 "css_decrypt_requested": use_pydvdcss,
+                                "aacs_decrypt_requested": use_aacs,
                                 "css_scrambled_media": result_dict.get(
                                     "css_scrambled"
+                                ),
+                                "aacs_mkb_version": result_dict.get(
+                                    "aacs_mkb_version"
                                 ),
                             },
                             ensure_ascii=False,
@@ -179,7 +206,7 @@ class OpticalService:
 
                 if job:
                     decrypt_note = (
-                        f" [CSS復号: {decrypt_method}]"
+                        f" [復号: {decrypt_method}]"
                         if decrypt_method
                         else ""
                     )
@@ -208,7 +235,7 @@ class OpticalService:
                     level="INFO",
                     category="imaging",
                     message=(
-                        f"光学イメージング（CSS復号）: "
+                        f"光学イメージング（復号）: "
                         f"job={job_id}, status={status}"
                     ),
                     detail=json.dumps(

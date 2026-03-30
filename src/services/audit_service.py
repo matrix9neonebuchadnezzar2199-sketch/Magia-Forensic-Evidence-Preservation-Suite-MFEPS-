@@ -15,6 +15,13 @@ from src.utils.constants import GENESIS_HASH_INPUT
 logger = logging.getLogger("mfeps.audit")
 
 
+def _audit_timestamp_iso(ts: datetime) -> str:
+    """SQLite 経由で naive に戻った時刻を UTC として isoformat 統一"""
+    if ts.tzinfo is None:
+        ts = ts.replace(tzinfo=timezone.utc)
+    return ts.isoformat()
+
+
 class AuditService:
     """ハッシュチェーン付き監査ログ"""
 
@@ -80,9 +87,11 @@ class AuditService:
                     }
 
                 # entry_hash 再計算
-                hash_input = (f"{entry.prev_hash}|{entry.timestamp.isoformat()}|"
-                             f"{entry.level}|{entry.category}|"
-                             f"{entry.message}|{entry.detail}")
+                hash_input = (
+                    f"{entry.prev_hash}|{_audit_timestamp_iso(entry.timestamp)}|"
+                    f"{entry.level}|{entry.category}|"
+                    f"{entry.message}|{entry.detail}"
+                )
                 computed_hash = hashlib.sha256(hash_input.encode()).hexdigest()
 
                 if entry.entry_hash != computed_hash:
