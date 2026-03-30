@@ -1,6 +1,7 @@
 """
 MFEPS v2.0 — SQLAlchemy ORM モデル定義
-6テーブル: cases, evidence_items, imaging_jobs, hash_records, chain_of_custody, audit_log
+7テーブル: cases, evidence_items, imaging_jobs, hash_records, chain_of_custody,
+audit_log, app_settings
 """
 import uuid
 from datetime import datetime, timezone
@@ -131,6 +132,18 @@ class ChainOfCustody(Base):
 
     def __repr__(self):
         return f"<CoC {self.action} at {self.timestamp}>"
+
+
+class AppSettings(Base):
+    """アプリケーション設定（1行テーブル）"""
+
+    __tablename__ = "app_settings"
+
+    id = Column(Integer, primary_key=True, default=1)
+    legal_consent_accepted = Column(Boolean, default=False)
+    legal_consent_version = Column(String(20), default="")
+    legal_consent_at = Column(DateTime, nullable=True)
+    legal_consent_actor = Column(String(100), default="")
 
 
 class AuditLog(Base):

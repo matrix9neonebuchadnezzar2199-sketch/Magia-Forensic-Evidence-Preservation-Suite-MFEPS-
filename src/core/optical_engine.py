@@ -7,11 +7,11 @@ import logging
 import os
 import time
 from pathlib import Path
-from typing import Optional, Callable
+from typing import Any, Callable, Optional
 
 from pydantic import BaseModel
 
-from src.core.hash_engine import TripleHashEngine, verify_image_hash
+from src.core.hash_engine import TripleHashEngine
 from src.core.win32_raw_io import (
     open_device, close_device, read_cdrom_toc, read_sectors, scsi_read_cd,
 )
@@ -193,7 +193,13 @@ class OpticalImagingEngine:
         use_pydvdcss: bool = False,
         progress_callback: Optional[Callable] = None,
     ) -> dict:
-        """光学メディアをイメージング"""
+        """
+        光学メディアをイメージングする。
+
+        use_pydvdcss=True の場合: DvdCssReader で CSS 復号しつつ読取。
+        初期化失敗・ImportError 時は RAW にフォールバック。
+        ハッシュは書き込んだバイト列（復号後）に対して計算する。
+        """
         start_time = time.time()
         hash_engine = TripleHashEngine()
         error_count = 0
@@ -203,15 +209,58 @@ class OpticalImagingEngine:
         total_sectors = analysis.sector_count
         total_bytes = total_sectors * sector_size
 
+        css_reader: Any = None  # DvdCssReader | None
+        decrypt_pydvdcss = False
+        decrypt_method: str | None = None
+        css_scrambled_snapshot: bool | None = None
+
         logger.info(
             f"光学イメージング開始: {drive_path}, "
-            f"sectors={total_sectors}, sector_size={sector_size}")
+            f"sectors={total_sectors}, sector_size={sector_size}, "
+            f"use_pydvdcss={use_pydvdcss}")
 
         handle = None
         output_file = None
 
         try:
-            handle = open_device(drive_path)
+            # ----- pydvdcss（CSS 復号）初期化 -----
+            if use_pydvdcss:
+                if sector_size != 2048:
+                    logger.warning(
+                        "pydvdcss は 2048 バイト/セクタのみ対応のため RAW にフォールバック "
+                        f"(sector_size={sector_size})"
+                    )
+                    use_pydvdcss = False
+                else:
+                    try:
+                        from src.core.dvdcss_reader import DvdCssReader as _Dvd
+
+                        css_reader = _Dvd()
+                        css_reader.open(drive_path)
+                        decrypt_pydvdcss = True
+                        decrypt_method = "pydvdcss"
+                        css_scrambled_snapshot = css_reader.is_scrambled
+                        logger.info(
+                            "CSS復号モード有効: scrambled=%s",
+                            css_scrambled_snapshot,
+                        )
+                    except ImportError:
+                        logger.warning(
+                            "pydvdcss 未インストール — RAW フォールバック"
+                        )
+                        css_reader = None
+                        use_pydvdcss = False
+                    except Exception as e:
+                        logger.warning(
+                            "pydvdcss 初期化失敗 — RAW フォールバック: %s", e
+                        )
+                        css_reader = None
+                        use_pydvdcss = False
+                        decrypt_method = None
+
+            if not decrypt_pydvdcss:
+                handle = open_device(drive_path)
+
             Path(output_path).parent.mkdir(parents=True, exist_ok=True)
             output_file = open(output_path, "wb")
 
@@ -223,7 +272,7 @@ class OpticalImagingEngine:
                     break
                 await self._pause_event.wait()
 
-                # 読取セクタ数
+                chunk_start_lba = current_lba
                 remaining = total_sectors - current_lba
                 chunk_sectors = min(self.buffer_sectors, remaining)
                 chunk_size = chunk_sectors * sector_size
@@ -232,23 +281,30 @@ class OpticalImagingEngine:
                 data = None
                 for attempt in range(self.retry_count):
                     try:
-                        if analysis.media_type == "CD-DA":
+                        if decrypt_pydvdcss and css_reader:
+                            data = css_reader.read_sectors(
+                                chunk_start_lba,
+                                chunk_sectors,
+                                is_title_start=(chunk_start_lba == 0),
+                            )
+                        elif analysis.media_type == "CD-DA":
                             data = scsi_read_cd(
                                 handle, current_lba, chunk_sectors,
                                 sector_size=2352)
                         else:
                             data = read_sectors(handle, offset, chunk_size)
                         break
-                    except OSError as e:
+                    except (OSError, IOError) as e:
                         if attempt < self.retry_count - 1:
                             wait = 0.1 * (2 ** attempt)
                             logger.warning(
                                 f"リトライ {attempt+1}/{self.retry_count}: "
-                                f"LBA={current_lba}, wait={wait}s")
+                                f"LBA={current_lba}, wait={wait}s, error={e}"
+                            )
                             await asyncio.sleep(wait)
                         else:
-                            logger.error(f"読取失敗: LBA={current_lba}")
-                            data = b'\x00' * chunk_size
+                            logger.error(f"読取失敗（ゼロフィル）: LBA={current_lba}")
+                            data = b"\x00" * chunk_size
                             error_count += 1
                             error_sectors.append(current_lba)
 
@@ -266,9 +322,11 @@ class OpticalImagingEngine:
                         "current_lba": current_lba,
                         "total_sectors": total_sectors,
                         "error_count": error_count,
+                        "decrypt_mode": (
+                            "pydvdcss" if decrypt_pydvdcss else "raw"
+                        ),
                     })
 
-            # フラッシュ
             output_file.flush()
             os.fsync(output_file.fileno())
 
@@ -277,19 +335,24 @@ class OpticalImagingEngine:
             return {
                 "status": "failed",
                 "error": str(e),
+                "decrypt_method": decrypt_method,
             }
         finally:
             if output_file:
                 output_file.close()
             if handle:
                 close_device(handle)
+            if css_reader:
+                css_reader.close()
 
         elapsed = time.time() - start_time
         source_hashes = hash_engine.hexdigests()
 
         logger.info(
             f"光学イメージング完了: {copied_bytes} bytes, "
-            f"{elapsed:.1f}s, errors={error_count}")
+            f"{elapsed:.1f}s, errors={error_count}, "
+            f"decrypt={decrypt_method or 'none'}"
+        )
 
         return {
             "status": "cancelled" if self._cancel_event.is_set() else "completed",
@@ -300,6 +363,8 @@ class OpticalImagingEngine:
             "error_sectors": error_sectors,
             "elapsed_seconds": elapsed,
             "output_path": output_path,
+            "decrypt_method": decrypt_method,
+            "css_scrambled": css_scrambled_snapshot,
         }
 
     async def cancel(self):

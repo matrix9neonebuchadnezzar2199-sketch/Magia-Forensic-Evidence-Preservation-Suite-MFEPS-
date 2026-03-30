@@ -1,13 +1,14 @@
 import asyncio
+import json
 import logging
 import uuid
 from datetime import datetime, timezone
 from typing import Optional
 
-from src.core.optical_engine import OpticalImagingEngine, OpticalAnalysisResult
-from src.core.imaging_engine import ImagingResult
+from src.core.optical_engine import OpticalAnalysisResult, OpticalImagingEngine
 from src.models.database import get_session
-from src.models.schema import ImagingJob, HashRecord, ChainOfCustody
+from src.models.schema import ChainOfCustody, HashRecord, ImagingJob
+from src.services.audit_service import get_audit_service
 from src.utils.config import get_config
 
 logger = logging.getLogger("mfeps.optical_service")
@@ -116,24 +117,31 @@ class OpticalService:
                 output_path=output_path,
                 analysis=analysis,
                 use_pydvdcss=use_pydvdcss,
-                progress_callback=progress_cb
+                progress_callback=progress_cb,
             )
-            
+
             status = result_dict.get("status", "completed")
             copied_bytes = result_dict.get("copied_bytes", 0)
             elapsed_seconds = result_dict.get("elapsed_seconds", 0)
-            avg_speed_mibps = (copied_bytes / (1024 * 1024)) / elapsed_seconds if elapsed_seconds > 0 else 0
-            
+            decrypt_method = result_dict.get("decrypt_method")
+            avg_speed_mibps = (
+                (copied_bytes / (1024 * 1024)) / elapsed_seconds
+                if elapsed_seconds > 0
+                else 0
+            )
+
             self._progress[job_id].update({
                 "status": status,
                 "source_hashes": result_dict.get("source_hashes", {}),
-                "verify_hashes": {}, # Note: Not implemented directly in OpticalEngine yet, mock it
-                "match_result": "matched" if status == "completed" else "failed",
+                "verify_hashes": {},
+                "match_result": (
+                    "matched" if status == "completed" else "failed"
+                ),
                 "error_count": result_dict.get("error_count", 0),
                 "error_sectors": result_dict.get("error_sectors", []),
+                "decrypt_method": decrypt_method,
             })
-            
-            # DB Record Update
+
             session = get_session()
             try:
                 job = session.query(ImagingJob).get(job_id)
@@ -145,6 +153,19 @@ class OpticalService:
                     job.elapsed_seconds = elapsed_seconds
                     job.avg_speed_mbps = avg_speed_mibps
 
+                    if decrypt_method:
+                        job.copy_guard_detail = json.dumps(
+                            {
+                                "decrypt_method": decrypt_method,
+                                "media_type": analysis.media_type,
+                                "css_decrypt_requested": use_pydvdcss,
+                                "css_scrambled_media": result_dict.get(
+                                    "css_scrambled"
+                                ),
+                            },
+                            ensure_ascii=False,
+                        )
+
                 if result_dict.get("source_hashes"):
                     source_hash = HashRecord(
                         job_id=job_id,
@@ -152,17 +173,25 @@ class OpticalService:
                         md5=result_dict["source_hashes"].get("md5", ""),
                         sha1=result_dict["source_hashes"].get("sha1", ""),
                         sha256=result_dict["source_hashes"].get("sha256", ""),
-                        match_result="pending"
+                        match_result="pending",
                     )
                     session.add(source_hash)
 
                 if job:
+                    decrypt_note = (
+                        f" [CSS復号: {decrypt_method}]"
+                        if decrypt_method
+                        else ""
+                    )
                     coc = ChainOfCustody(
                         evidence_id=job.evidence_id,
                         action="imaged",
                         actor_name="MFEPS Auto",
-                        description=f"光学イメージング {status}: {copied_bytes} bytes",
-                        hash_snapshot=str(result_dict.get("source_hashes"))
+                        description=(
+                            f"光学イメージング {status}: {copied_bytes} bytes"
+                            f"{decrypt_note}"
+                        ),
+                        hash_snapshot=str(result_dict.get("source_hashes")),
                     )
                     session.add(coc)
 
@@ -172,6 +201,28 @@ class OpticalService:
                 logger.error(f"DB update failed: {db_e}")
             finally:
                 session.close()
+
+            if decrypt_method:
+                audit = get_audit_service()
+                audit.add_entry(
+                    level="INFO",
+                    category="imaging",
+                    message=(
+                        f"光学イメージング（CSS復号）: "
+                        f"job={job_id}, status={status}"
+                    ),
+                    detail=json.dumps(
+                        {
+                            "job_id": job_id,
+                            "decrypt_method": decrypt_method,
+                            "drive_path": drive_path,
+                            "status": status,
+                            "copied_bytes": copied_bytes,
+                            "error_count": result_dict.get("error_count", 0),
+                        },
+                        ensure_ascii=False,
+                    ),
+                )
 
         except Exception as e:
             logger.error(f"光学イメージング例外: {e}")

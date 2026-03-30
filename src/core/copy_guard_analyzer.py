@@ -227,8 +227,107 @@ class CopyGuardAnalyzer:
 
     def _check_arccos(self, drive_path: str,
                        info: OpticalAnalysisResult) -> ProtectionInfo:
-        """Sony ARccOS検出 — 意図的不良セクタパターン"""
-        # 特定LBA範囲のサンプル読取でエラーパターンを検出
+        """
+        Sony ARccOS 検出 — 2段階アプローチ
+
+        第1段階: 99トラック（ダミータイトル）— TOC のみ、追加 I/O なし。
+        第2段階: ディスク後半 LBA のサンプル読取で不良セクタ傾向を検出。
+        """
+        detected = False
+        details_parts: list[str] = []
+        severity = "info"
+
+        # ----- 第1段階: 99トラック -----
+        if info.track_count == 99:
+            detected = True
+            details_parts.append(
+                f"99トラック検出（トラック数: {info.track_count}）"
+            )
+            severity = "warning"
+            logger.info(
+                "ARccOS 第1段階: 99トラック検出 (tracks=%s)",
+                info.track_count,
+            )
+
+        # ----- 第2段階: 不良セクタパターンスキャン -----
+        bad_sector_count = 0
+        sample_count = 0
+
+        try:
+            total_sectors = info.sector_count
+            if total_sectors <= 0:
+                raise ValueError("セクタ数が不正です")
+
+            sector_size = info.sector_size if info.sector_size else 2048
+            if sector_size <= 0:
+                sector_size = 2048
+
+            scan_start = int(total_sectors * 0.75)
+            scan_end = int(total_sectors * 0.95)
+            scan_range = scan_end - scan_start
+
+            if scan_range > 0:
+                sample_count = min(20, max(1, scan_range // 16))
+                step = max(1, scan_range // sample_count)
+            else:
+                sample_count = 0
+
+            handle = open_device(drive_path)
+            try:
+                if sample_count > 0:
+                    for i in range(sample_count):
+                        probe_lba = scan_start + (step * i)
+                        if probe_lba >= total_sectors:
+                            break
+                        try:
+                            offset = probe_lba * sector_size
+                            _ = read_sectors(handle, offset, sector_size)
+                        except OSError:
+                            bad_sector_count += 1
+            finally:
+                close_device(handle)
+
+        except Exception as e:
+            logger.debug("ARccOS 第2段階スキャンエラー: %s", e)
+
+        # ----- 第2段階の判定（サンプル25%以上エラーで強いシグナル） -----
+        if sample_count > 0 and bad_sector_count > 0:
+            error_ratio = bad_sector_count / sample_count
+            if error_ratio >= 0.25:
+                detected = True
+                severity = "warning"
+                details_parts.append(
+                    f"不良セクタパターン検出 "
+                    f"({bad_sector_count}/{sample_count}サンプル, "
+                    f"{error_ratio:.0%})"
+                )
+                logger.info(
+                    "ARccOS 第2段階: 不良セクタパターン "
+                    "(%s/%s, ratio=%.2f)",
+                    bad_sector_count,
+                    sample_count,
+                    error_ratio,
+                )
+            elif error_ratio > 0:
+                details_parts.append(
+                    f"一部セクタエラーあり "
+                    f"({bad_sector_count}/{sample_count}サンプル)"
+                )
+
+        if detected:
+            combined = " — ".join(details_parts)
+            return ProtectionInfo(
+                type=CopyGuardType.ARCCOS,
+                detected=True,
+                can_decrypt=True,
+                details=(
+                    f"ARccOS検出: {combined}. "
+                    "RAWコピーは可能ですが、意図的不良セクタにより "
+                    "一部セクタがゼロフィルされます。"
+                ),
+                severity=severity,
+            )
+
         return ProtectionInfo(
             type=CopyGuardType.ARCCOS,
             detected=False,

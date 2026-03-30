@@ -8,6 +8,11 @@ import asyncio
 from src.core.device_detector import detect_optical_drives, OpticalDriveInfo
 from src.core.optical_engine import OpticalMediaAnalyzer
 from src.core.copy_guard_analyzer import CopyGuardAnalyzer, ProtectionInfo
+from src.models.enums import CopyGuardType
+from src.ui.components.legal_consent_dialog import (
+    is_consent_given,
+    show_legal_consent_dialog,
+)
 from src.ui.layout import create_layout
 
 
@@ -59,7 +64,17 @@ def build_optical_page():
                         return
                     
                     stepper.next()
-                    
+
+                    if not is_consent_given():
+                        accepted = await show_legal_consent_dialog()
+                        if not accepted:
+                            ui.notify(
+                                "同意がないためコピーガード解析を実行できません",
+                                type="warning",
+                            )
+                            stepper.previous()
+                            return
+
                     # 分析フェーズ
                     scan_container.clear()
                     with scan_container:
@@ -125,7 +140,11 @@ def build_optical_page():
                         evidence_id=ev_val,
                         analysis=state["analysis"],
                         output_format=format_select.value,
-                        use_pydvdcss=state["guard_result"].overall_can_decrypt,
+                        use_pydvdcss=any(
+                            getattr(p.type, "value", p.type) == CopyGuardType.CSS.value
+                            and p.can_decrypt
+                            for p in state["guard_result"].protections
+                        ),
                         verify=verify_switch.value
                     )
                     state["job_id"] = job_id
