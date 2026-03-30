@@ -3,6 +3,8 @@ MFEPS v2.0 — 設定ダイアログ
 フォントサイズ、バッファ、RFC3161、テーマ等の設定
 """
 from nicegui import ui, app
+
+from src.models.enums import AuditCategory
 from src.utils.config import get_config, reload_config
 from src.utils.constants import BUFFER_SIZE_OPTIONS
 
@@ -23,6 +25,85 @@ def build_settings():
     current_rfc3161 = stored.get("rfc3161_enabled", config.mfeps_rfc3161_enabled)
     current_tsa = stored.get("tsa_url", config.mfeps_rfc3161_tsa_url)
     current_double_read = stored.get("double_read", config.mfeps_double_read_optical)
+
+    # ==== アカウント管理 ====
+    with ui.card().classes("q-pa-md full-width q-mb-md"):
+        ui.label("■ アカウント管理").classes("text-subtitle1 text-weight-bold q-mb-sm")
+        ui.separator()
+
+        current_pw = ui.input(
+            "現在のパスワード",
+            password=True,
+            password_toggle_button=True,
+        ).classes("full-width")
+        new_pw = ui.input(
+            "新しいパスワード",
+            password=True,
+            password_toggle_button=True,
+        ).classes("full-width q-mt-sm")
+        confirm_pw = ui.input(
+            "新しいパスワード（確認）",
+            password=True,
+            password_toggle_button=True,
+        ).classes("full-width q-mt-sm")
+
+        async def change_password():
+            if not current_pw.value or not new_pw.value:
+                ui.notify("全ての欄を入力してください", type="warning")
+                return
+            if new_pw.value != confirm_pw.value:
+                ui.notify("新しいパスワードが一致しません", type="negative")
+                return
+            if len(new_pw.value) < 8:
+                ui.notify("パスワードは8文字以上にしてください", type="warning")
+                return
+
+            from src.services.auth_service import get_auth_service
+            from src.ui.session_auth import get_current_user_id
+            from src.models.database import session_scope
+            from src.models.schema import User
+            from src.services.audit_service import get_audit_service
+
+            auth = get_auth_service()
+            user_id = get_current_user_id()
+            if not user_id:
+                ui.notify("ログインセッションが無効です", type="negative")
+                return
+
+            username_for_audit = ""
+            try:
+                with session_scope() as session:
+                    user = session.query(User).filter(User.id == user_id).first()
+                    if not user:
+                        ui.notify("ユーザーが見つかりません", type="negative")
+                        return
+                    if not auth.verify_password(current_pw.value, user.password_hash):
+                        ui.notify("現在のパスワードが正しくありません", type="negative")
+                        return
+                    username_for_audit = user.username
+                    user.password_hash = auth.hash_password(new_pw.value)
+            except Exception as e:
+                ui.notify(f"パスワード変更に失敗しました: {e}", type="negative")
+                return
+
+            get_audit_service().add_entry(
+                level="INFO",
+                category=AuditCategory.AUTH.value,
+                message=f"パスワード変更: {username_for_audit}",
+                detail="",
+            )
+
+            current_pw.value = ""
+            new_pw.value = ""
+            confirm_pw.value = ""
+            ui.notify("パスワードを変更しました", type="positive")
+
+        ui.button(
+            "パスワードを変更",
+            on_click=change_password,
+            icon="lock_reset",
+            color="primary",
+        ).classes("q-mt-md").props("unelevated")
 
     # ==== 表示設定 ====
     with ui.card().classes("q-pa-md full-width q-mb-md"):

@@ -55,6 +55,18 @@ def login_user(user_dict: dict[str, Any]) -> None:
     app.storage.user["login_at"] = now.isoformat()
 
 
+def get_current_user_id() -> str | None:
+    """現在のログインユーザー ID（未ログイン・セッション無効時は None）"""
+    try:
+        u = app.storage.user
+    except Exception:
+        return None
+    if not u:
+        return None
+    uid = u.get("user_id")
+    return str(uid) if uid else None
+
+
 def get_current_actor_name() -> str:
     """CoC・監査用の表示名（未ログイン時はフォールバック）"""
     try:
