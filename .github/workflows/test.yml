@@ -27,7 +27,14 @@ jobs:
           pip install -r requirements.txt
 
       - name: Run tests
-        run: pytest tests/ -v --tb=short
+        run: pytest tests/ -v --tb=short --junitxml=test-results.xml
         env:
           MFEPS_OUTPUT_DIR: ./test_output
           MFEPS_LOG_LEVEL: DEBUG
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results-${{ matrix.python-version }}
+          path: test-results.xml
