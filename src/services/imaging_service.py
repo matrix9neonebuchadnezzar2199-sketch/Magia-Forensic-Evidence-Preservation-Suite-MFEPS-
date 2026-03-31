@@ -21,6 +21,13 @@ from src.utils.path_sanitize import sanitize_path_component
 logger = logging.getLogger("mfeps.imaging_service")
 
 
+def _hash_dict_has_values(h: Optional[dict]) -> bool:
+    """空の {} や全キー空文字のときは False（HashRecord を作らない）"""
+    if not h:
+        return False
+    return any((v or "").strip() for v in h.values())
+
+
 class ImagingService:
     """イメージングオーケストレータ"""
 
@@ -407,6 +414,15 @@ class ImagingService:
             else:
                 status = "failed"
 
+            avg_mib = 0.0
+            if (
+                e01_result.elapsed_seconds > 0
+                and e01_result.acquired_bytes > 0
+            ):
+                avg_mib = e01_result.acquired_bytes / (
+                    e01_result.elapsed_seconds * 1024 * 1024
+                )
+
             imaging_result = ImagingResult(
                 job_id=job_id,
                 status=status,
@@ -420,6 +436,7 @@ class ImagingService:
                 total_bytes=e01_result.total_bytes,
                 copied_bytes=e01_result.acquired_bytes,
                 elapsed_seconds=e01_result.elapsed_seconds,
+                avg_speed_mibps=avg_mib,
                 output_path=(
                     e01_result.output_files[0] if e01_result.output_files else ""
                 ),
@@ -491,7 +508,7 @@ class ImagingService:
                     if result.output_path:
                         job.output_path = result.output_path
 
-                if result.source_hashes:
+                if _hash_dict_has_values(result.source_hashes):
                     source_hash = HashRecord(
                         job_id=result.job_id,
                         target="source",
@@ -503,7 +520,7 @@ class ImagingService:
                     )
                     session.add(source_hash)
 
-                if result.verify_hashes:
+                if _hash_dict_has_values(result.verify_hashes):
                     verify_hash = HashRecord(
                         job_id=result.job_id,
                         target="verify",

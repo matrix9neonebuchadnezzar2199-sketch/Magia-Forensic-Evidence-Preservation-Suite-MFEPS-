@@ -6,7 +6,7 @@ chain_of_custody, audit_log, app_settings
 import uuid
 from datetime import datetime, timezone
 from sqlalchemy import (
-    Column, String, Text, Integer, Float, DateTime, Boolean, LargeBinary,
+    Column, String, Text, Integer, BigInteger, Float, DateTime, Boolean, LargeBinary,
     ForeignKey, Index,
 )
 from sqlalchemy.orm import DeclarativeBase, relationship
@@ -92,8 +92,8 @@ class ImagingJob(Base):
     source_path = Column(String(500), default="")
     output_path = Column(String(500), default="")
     output_format = Column(String(20), default="raw")
-    total_bytes = Column(Integer, default=0)
-    copied_bytes = Column(Integer, default=0)
+    total_bytes = Column(BigInteger, default=0)
+    copied_bytes = Column(BigInteger, default=0)
     buffer_size = Column(Integer, default=1_048_576)
     error_count = Column(Integer, default=0)
     error_map_path = Column(String(500), default="")

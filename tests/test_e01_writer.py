@@ -146,6 +146,16 @@ class TestOutputParsing:
             == "ab12cd34ef5678901234567890abcdef12345678"
         )
 
+    def test_extract_sha1_hyphenated_label(self):
+        """libewf は "SHA-1 hash calculated" と出力する場合がある"""
+        output = (
+            "SHA-1 hash calculated over data:\tab12cd34ef5678901234567890abcdef12345678\n"
+        )
+        assert (
+            E01Writer._extract_hash_from_output(output, "SHA1")
+            == "ab12cd34ef5678901234567890abcdef12345678"
+        )
+
     def test_extract_sha256(self):
         sha = "a" * 64
         output = f"SHA256 hash calculated over data: {sha}\n"

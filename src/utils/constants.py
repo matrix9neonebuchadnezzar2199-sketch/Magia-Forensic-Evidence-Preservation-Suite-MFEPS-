@@ -100,16 +100,17 @@ E01_DEFAULT_EWF_FORMAT = "encase6"
 E01_DEFAULT_READ_ERROR_RETRIES = 2
 
 E01_PROGRESS_PATTERN = r"at\s+(\d+)%"
+# ewfacquire / ewfverify はアルゴリズム名を "SHA-1" / "SHA-256" 等で出力する場合がある
 E01_HASH_PATTERN = (
-    r"([A-Z0-9]+)\s+hash\s+calculated\s+over\s+data:\s*([0-9a-fA-F]+)"
+    r"([A-Za-z0-9\-]+)\s+hash\s+calculated\s+over\s+data:\s*([0-9a-fA-F]+)"
 )
-E01_BYTES_PATTERN = r"Written:\s+.*?\((\d+)\s+bytes\)"
+E01_BYTES_PATTERN = r"Written:\s+[^\n]+\((\d+)\s+bytes\)"
 
 EWFVERIFY_STORED_HASH_PATTERN = (
-    r"([A-Z0-9]+)\s+hash\s+stored\s+in\s+file:\s*([0-9a-fA-F]+)"
+    r"([A-Za-z0-9\-]+)\s+hash\s+stored\s+in\s+file:\s*([0-9a-fA-F]+)"
 )
 EWFVERIFY_COMPUTED_HASH_PATTERN = (
-    r"([A-Z0-9]+)\s+hash\s+calculated\s+over\s+data:\s*([0-9a-fA-F]+)"
+    r"([A-Za-z0-9\-]+)\s+hash\s+calculated\s+over\s+data:\s*([0-9a-fA-F]+)"
 )
 EWFVERIFY_SUCCESS_PATTERN = r"ewfverify:\s+SUCCESS"
 

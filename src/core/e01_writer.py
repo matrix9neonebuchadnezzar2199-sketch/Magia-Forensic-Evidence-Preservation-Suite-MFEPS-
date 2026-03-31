@@ -471,9 +471,11 @@ class E01Writer:
             result.output = output
 
             for match in re.finditer(EWFVERIFY_STORED_HASH_PATTERN, output):
-                result.stored_hashes[match.group(1)] = match.group(2).lower()
+                key = E01Writer._normalize_ewf_algo_key(match.group(1))
+                result.stored_hashes[key] = match.group(2).lower()
             for match in re.finditer(EWFVERIFY_COMPUTED_HASH_PATTERN, output):
-                result.computed_hashes[match.group(1)] = match.group(2).lower()
+                key = E01Writer._normalize_ewf_algo_key(match.group(1))
+                result.computed_hashes[key] = match.group(2).lower()
 
             result.verified = result.return_code == 0 and bool(
                 re.search(EWFVERIFY_SUCCESS_PATTERN, output)
@@ -539,17 +541,29 @@ class E01Writer:
                 self._progress_callback(self._current_progress)
 
     @staticmethod
+    def _normalize_ewf_algo_key(name: str) -> str:
+        """SHA-1 / SHA-256 等を MD5 / SHA1 / SHA256 キーに正規化"""
+        return re.sub(r"[^A-Za-z0-9]", "", name).upper()
+
+    @staticmethod
     def _extract_hash_from_output(output: str, algo: str) -> str:
+        want = E01Writer._normalize_ewf_algo_key(algo)
         for match in re.finditer(E01_HASH_PATTERN, output):
-            if match.group(1).upper() == algo.upper():
+            if E01Writer._normalize_ewf_algo_key(match.group(1)) == want:
                 return match.group(2).lower()
         return ""
 
     @staticmethod
     def _extract_written_bytes(output: str) -> int:
-        match = re.search(E01_BYTES_PATTERN, output)
+        match = re.search(E01_BYTES_PATTERN, output, re.IGNORECASE)
         if match:
             return int(match.group(1))
+        # フォールバック: 行区切りが異なる / ロケール差
+        match2 = re.search(
+            r"Written:\s+.*?\((\d+)\s+bytes\)", output, re.IGNORECASE | re.DOTALL
+        )
+        if match2:
+            return int(match2.group(1))
         return 0
 
     @staticmethod
