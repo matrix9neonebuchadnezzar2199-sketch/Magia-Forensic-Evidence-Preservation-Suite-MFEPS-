@@ -312,11 +312,13 @@ def build_usb_hdd_page():
                     service = get_imaging_service()
                     progress = dict(service.get_progress(state["job_id"]))
                     if "e01_percent" in progress:
-                        pct_val = progress.get("e01_percent", 0)
+                        pct_val = float(progress.get("e01_percent", 0))
                         dev = state.get("selected_device")
-                        total_bytes = dev.capacity_bytes if dev else 0
-                        progress["copied_bytes"] = int(total_bytes * pct_val / 100)
-                        progress["total_bytes"] = total_bytes
+                        cap = dev.capacity_bytes if dev else 0
+                        # E01 から acquired/total が来ているときは実測を優先
+                        if progress.get("total_bytes", 0) <= 0 and cap > 0:
+                            progress["copied_bytes"] = int(cap * pct_val / 100)
+                            progress["total_bytes"] = cap
                     status = progress.get("status", "unknown")
 
                     progress_container.clear()

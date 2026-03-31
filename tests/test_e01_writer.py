@@ -1,14 +1,16 @@
 """
 MFEPS v2.0 — E01Writer 単体テスト
 """
+import asyncio
 import re
 from unittest.mock import MagicMock, patch
 
 from src.core.e01_writer import E01Params, E01Writer
 from src.utils.constants import (
+    E01_ACQUIRED_PATTERN,
     E01_BYTES_PATTERN,
-    E01_HASH_PATTERN,
     E01_PROGRESS_PATTERN,
+    E01_SPEED_PATTERN,
     EWFVERIFY_COMPUTED_HASH_PATTERN,
     EWFVERIFY_STORED_HASH_PATTERN,
     EWFVERIFY_SUCCESS_PATTERN,
@@ -181,15 +183,38 @@ class TestOutputParsing:
 
     def test_progress_pattern(self):
         line = "Status: at 45%."
-        match = re.search(E01_PROGRESS_PATTERN, line)
+        match = E01_PROGRESS_PATTERN.search(line)
         assert match is not None
         assert match.group(1) == "45"
 
     def test_progress_pattern_100(self):
         line = "Status: at 100%."
-        match = re.search(E01_PROGRESS_PATTERN, line)
+        match = E01_PROGRESS_PATTERN.search(line)
         assert match is not None
         assert match.group(1) == "100"
+
+    def test_progress_pattern_decimal(self):
+        line = "Status: at 5.0%."
+        match = E01_PROGRESS_PATTERN.search(line)
+        assert match is not None
+        assert match.group(1) == "5.0"
+
+    def test_acquired_and_speed_patterns(self):
+        s2 = (
+            "acquired 188 MiB (197591040 bytes) of total 3.6 GiB (3926949888 bytes)"
+        )
+        m = E01_ACQUIRED_PATTERN.search(s2)
+        assert m is not None
+        assert int(m.group(1)) == 197591040
+        assert int(m.group(2)) == 3926949888
+        s3 = (
+            "completion in 1 minute(s) and 15 second(s) with 47 MiB/s "
+            "(49708226 bytes/second)"
+        )
+        m3 = E01_SPEED_PATTERN.search(s3)
+        assert m3 is not None
+        assert float(m3.group(2)) == 47.0
+        assert int(m3.group(3)) == 49708226
 
 
 class TestVerifyParsing:
@@ -220,3 +245,28 @@ class TestVerifyParsing:
     def test_failure_case(self):
         output = "ewfverify: FAILURE\n"
         assert re.search(EWFVERIFY_SUCCESS_PATTERN, output) is None
+
+
+class TestCrAwareStreamReader:
+    def test_carriage_return_splits_lines_like_ewfacquire(self):
+        """ewfacquire が \\r で同一行上書きする場合でも readline より先に行が確定する"""
+
+        async def run():
+            reader = asyncio.StreamReader()
+            reader.feed_data(
+                b"CopyStatus: at 1%.\rStatus: at 50%.\rStatus: at 100%.\r\n"
+            )
+            reader.feed_data(b"Acquiry completed at: Sun\n")
+            reader.feed_eof()
+            writer = E01Writer()
+            lines = []
+            await writer._read_stream_cr_aware(reader, lines, parse_progress=False)
+            return lines
+
+        lines = asyncio.run(run())
+        assert lines == [
+            "CopyStatus: at 1%.",
+            "Status: at 50%.",
+            "Status: at 100%.",
+            "Acquiry completed at: Sun",
+        ]

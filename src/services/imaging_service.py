@@ -407,6 +407,15 @@ class ImagingService:
                         ),
                     )
 
+                # 一部 libewf ビルドは stdout に SHA-1 行を出さないが E01 内と ewfverify には格納される
+                if not verify.skipped and not e01_result.sha1:
+                    sha1_from_verify = (
+                        verify.computed_hashes.get("SHA1", "")
+                        or verify.stored_hashes.get("SHA1", "")
+                    )
+                    if sha1_from_verify:
+                        e01_result.sha1 = sha1_from_verify
+
             if e01_result.error_code == "E3006":
                 status = "cancelled"
             elif e01_result.success:
@@ -575,14 +584,22 @@ class ImagingService:
         writer = self._e01_writers.get(job_id)
         if writer:
             p = writer.get_progress()
+            acquired = int(p.get("acquired_bytes") or 0)
+            total = int(p.get("total_bytes") or 0)
+            speed_b = int(p.get("speed_bytes") or 0)
+            speed_mibps = (
+                speed_b / (1024 * 1024) if speed_b > 0 else 0.0
+            )
             return {
                 "status": p.get("status", "imaging"),
-                "copied_bytes": 0,
-                "total_bytes": 0,
-                "speed_mibps": 0.0,
+                "copied_bytes": acquired,
+                "total_bytes": total,
+                "speed_mibps": speed_mibps,
                 "e01_percent": p.get("percent", 0),
                 "eta_seconds": 0.0,
                 "error_count": 0,
+                "e01_remaining": p.get("remaining", ""),
+                "e01_speed_display": p.get("speed_display", ""),
             }
         if job_id in self._results:
             return self._results[job_id]

@@ -1,6 +1,7 @@
 """
 MFEPS v2.0 — 定数定義
 """
+import re
 
 # アプリケーション情報
 APP_NAME = "MFEPS"
@@ -99,12 +100,23 @@ E01_DEFAULT_SECTORS_PER_CHUNK = 64
 E01_DEFAULT_EWF_FORMAT = "encase6"
 E01_DEFAULT_READ_ERROR_RETRIES = 2
 
-E01_PROGRESS_PATTERN = r"at\s+(\d+)%"
-# ewfacquire / ewfverify はアルゴリズム名を "SHA-1" / "SHA-256" 等で出力する場合がある
-E01_HASH_PATTERN = (
-    r"([A-Za-z0-9\-]+)\s+hash\s+calculated\s+over\s+data:\s*([0-9a-fA-F]+)"
+# ewfacquire 進捗（Windows 20230405 等は 3 行ブロック: Status / acquired / completion）
+E01_PROGRESS_PATTERN = re.compile(r"Status:\s+at\s+([\d.]+)%")
+E01_ACQUIRED_PATTERN = re.compile(
+    r"acquired\s+[\d.]+\s+\S+\s+\((\d+)\s+bytes\)\s+of\s+total\s+[\d.]+\s+\S+\s+\((\d+)\s+bytes\)"
 )
-E01_BYTES_PATTERN = r"Written:\s+[^\n]+\((\d+)\s+bytes\)"
+E01_SPEED_PATTERN = re.compile(
+    r"completion\s+in\s+(.+?)\s+with\s+([\d.]+)\s+\S+\s+\((\d+)\s+bytes/second\)"
+)
+# ハッシュ行: コロン後にタブのみのビルドあり。SHA-1 行は出ない場合あり（ewfverify で補完）
+E01_HASH_PATTERN = re.compile(
+    r"([A-Za-z0-9\-]+)\s+hash\s+calculated\s+over\s+data:\s*\t*([0-9a-fA-F]+)"
+)
+E01_WRITTEN_PATTERN = re.compile(
+    r"Written:\s+[\d.]+\s+\S+\s+\((\d+)\s+bytes\)"
+)
+# 後方互換（統合テスト・旧コード向け）
+E01_BYTES_PATTERN = E01_WRITTEN_PATTERN
 
 EWFVERIFY_STORED_HASH_PATTERN = (
     r"([A-Za-z0-9\-]+)\s+hash\s+stored\s+in\s+file:\s*([0-9a-fA-F]+)"

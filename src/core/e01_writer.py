@@ -30,8 +30,10 @@ from src.utils.constants import (
     E01_DEFAULT_READ_ERROR_RETRIES,
     E01_DEFAULT_SEGMENT_SIZE_BYTES,
     E01_PROGRESS_PATTERN,
+    E01_ACQUIRED_PATTERN,
+    E01_SPEED_PATTERN,
     E01_HASH_PATTERN,
-    E01_BYTES_PATTERN,
+    E01_WRITTEN_PATTERN,
     EWFVERIFY_STORED_HASH_PATTERN,
     EWFVERIFY_COMPUTED_HASH_PATTERN,
     EWFVERIFY_SUCCESS_PATTERN,
@@ -115,8 +117,13 @@ class E01Writer:
         self._progress_callback: Optional[Callable] = None
         self._current_progress: dict = {
             "status": "idle",
-            "percent": 0,
+            "percent": 0.0,
             "raw_line": "",
+            "acquired_bytes": 0,
+            "total_bytes": 0,
+            "remaining": "",
+            "speed_display": "",
+            "speed_bytes": 0,
         }
 
     def set_progress_callback(self, callback: Callable) -> None:
@@ -356,17 +363,24 @@ class E01Writer:
             )
 
             stdout_task = asyncio.create_task(
-                self._read_stream(
+                self._read_stream_cr_aware(
                     self._process.stdout, stdout_lines, parse_progress=True
                 )
             )
             stderr_task = asyncio.create_task(
-                self._read_stream(self._process.stderr, stderr_lines)
+                self._read_stream_cr_aware(self._process.stderr, stderr_lines)
             )
 
             await asyncio.gather(stdout_task, stderr_task)
 
             return_code = await self._process.wait()
+
+            # ewfacquire は最後の Status を 100% 未満で出さず Acquiry completed に移るため、
+            # 完了直後に UI を 100% へ（結果解析の前）
+            if self._progress_callback and not self._cancel_requested:
+                self._current_progress["percent"] = 100.0
+                self._current_progress["status"] = "finalizing"
+                self._progress_callback(dict(self._current_progress))
 
             elapsed = time.monotonic() - start_time
             result.elapsed_seconds = round(elapsed, 2)
@@ -410,7 +424,7 @@ class E01Writer:
 
             result.success = True
             self._current_progress["status"] = "completed"
-            self._current_progress["percent"] = 100
+            self._current_progress["percent"] = 100.0
 
             logger.info(
                 "E01 取得成功: %s segments, %s bytes, MD5=%s, SHA1=%s",
@@ -508,37 +522,88 @@ class E01Writer:
             except ProcessLookupError:
                 pass
 
-    async def _read_stream(
+    async def _read_stream_cr_aware(
         self,
         stream: Optional[asyncio.StreamReader],
         line_buffer: list[str],
         parse_progress: bool = False,
     ) -> None:
+        """
+        ewfacquire は進捗を \\r で同一行上書きする。readline() は \\n まで待つため
+        進捗がバッファに溜まり UI が更新されない。\\r / \\n のいずれでも行を確定する。
+        """
         if stream is None:
             return
-        while True:
-            line_bytes = await stream.readline()
-            if not line_bytes:
-                break
-            decoded = line_bytes.decode("utf-8", errors="replace").rstrip()
-            line_buffer.append(decoded)
 
+        line_buf = bytearray()
+
+        def flush_line() -> None:
+            if not line_buf:
+                return
+            line = line_buf.decode("utf-8", errors="replace").strip()
+            line_buf.clear()
+            if not line:
+                return
+            line_buffer.append(line)
             if parse_progress:
-                self._parse_progress_line(decoded)
+                self._parse_progress_line(line)
+
+        while True:
+            chunk = await stream.read(4096)
+            if not chunk:
+                flush_line()
+                break
+            for ch in chunk:
+                if ch in (0x0D, 0x0A):
+                    flush_line()
+                else:
+                    line_buf.append(ch)
+
+    def _emit_progress(self) -> None:
+        if self._progress_callback:
+            self._progress_callback(dict(self._current_progress))
 
     def _parse_progress_line(self, line: str) -> None:
-        match = re.search(E01_PROGRESS_PATTERN, line)
-        if match:
-            pct = int(match.group(1))
-            self._current_progress.update(
-                {
-                    "status": "imaging",
-                    "percent": pct,
-                    "raw_line": line,
-                }
-            )
-            if self._progress_callback:
-                self._progress_callback(self._current_progress)
+        """ewfacquire の stdout 行を解析（Status / acquired / completion の 3 行ブロック対応）。"""
+
+        m = E01_PROGRESS_PATTERN.search(line)
+        if m:
+            self._current_progress["percent"] = float(m.group(1))
+            self._current_progress["status"] = "imaging"
+            self._current_progress["raw_line"] = line
+            self._emit_progress()
+            return
+
+        m = E01_ACQUIRED_PATTERN.search(line)
+        if m:
+            self._current_progress["acquired_bytes"] = int(m.group(1))
+            self._current_progress["total_bytes"] = int(m.group(2))
+            self._current_progress["raw_line"] = line
+            self._emit_progress()
+            return
+
+        m = E01_SPEED_PATTERN.search(line)
+        if m:
+            self._current_progress["remaining"] = m.group(1).strip()
+            self._current_progress["speed_display"] = f"{m.group(2)} MiB/s"
+            self._current_progress["speed_bytes"] = int(m.group(3))
+            self._current_progress["raw_line"] = line
+            self._emit_progress()
+            return
+
+        m = E01_HASH_PATTERN.search(line)
+        if m:
+            algo = E01Writer._normalize_ewf_algo_key(m.group(1))
+            self._current_progress[f"hash_{algo.lower()}"] = m.group(2).lower()
+            self._current_progress["raw_line"] = line
+            self._emit_progress()
+            return
+
+        m = E01_WRITTEN_PATTERN.search(line)
+        if m:
+            self._current_progress["written_bytes"] = int(m.group(1))
+            self._current_progress["raw_line"] = line
+            self._emit_progress()
 
     @staticmethod
     def _normalize_ewf_algo_key(name: str) -> str:
@@ -548,17 +613,16 @@ class E01Writer:
     @staticmethod
     def _extract_hash_from_output(output: str, algo: str) -> str:
         want = E01Writer._normalize_ewf_algo_key(algo)
-        for match in re.finditer(E01_HASH_PATTERN, output):
+        for match in E01_HASH_PATTERN.finditer(output):
             if E01Writer._normalize_ewf_algo_key(match.group(1)) == want:
                 return match.group(2).lower()
         return ""
 
     @staticmethod
     def _extract_written_bytes(output: str) -> int:
-        match = re.search(E01_BYTES_PATTERN, output, re.IGNORECASE)
+        match = E01_WRITTEN_PATTERN.search(output)
         if match:
             return int(match.group(1))
-        # フォールバック: 行区切りが異なる / ロケール差
         match2 = re.search(
             r"Written:\s+.*?\((\d+)\s+bytes\)", output, re.IGNORECASE | re.DOTALL
         )
