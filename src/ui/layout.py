@@ -3,7 +3,7 @@ MFEPS v2.0 — メインレイアウト
 ヘッダー + 折り畳みサイドバー + メインコンテンツ + ステータスバー
 """
 from nicegui import ui, app
-from src.utils.constants import APP_TITLE, COLOR_PRIMARY
+from src.utils.constants import APP_TITLE, APP_VERSION, COLOR_PRIMARY
 from src.ui.theme.modern_dark import CUSTOM_CSS
 from src.ui.session_auth import require_auth, clear_session
 from src.services.audit_service import get_audit_service
@@ -117,7 +117,7 @@ def create_layout(content_builder):
         # ---- スペーサー + バージョン ----
         ui.space()
         with ui.row().classes("q-pa-md items-center"):
-            ui.label("v2.1.0").classes("text-caption text-grey-6")
+            ui.label(f"v{APP_VERSION}").classes("text-caption text-grey-6")
 
     # ---------- メインコンテンツ ----------
     with ui.column().classes("q-pa-lg full-width fade-in"):
@@ -128,5 +128,5 @@ def create_layout(content_builder):
         with ui.row().classes("items-center gap-4"):
             ui.label("準備完了")
             ui.space()
-            ui.label("MFEPS v2.0").classes("text-grey-6")
+            ui.label(f"MFEPS v{APP_VERSION}").classes("text-grey-6")
 
