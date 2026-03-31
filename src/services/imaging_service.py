@@ -21,6 +21,28 @@ from src.utils.path_sanitize import sanitize_path_component
 logger = logging.getLogger("mfeps.imaging_service")
 
 
+def _merge_e01_verify_hashes_from_source(
+    job: Optional[ImagingJob],
+    result: ImagingResult,
+) -> Optional[dict]:
+    """
+    E01 かつ検証一致時、ewfverify が MD5 を返さないビルドでも
+    イメージ側 hash_record にソースと同一の raw ハッシュを記録する。
+    """
+    if not result.verify_hashes or not _hash_dict_has_values(result.verify_hashes):
+        return None
+    if not job or (job.output_format or "").lower() != "e01":
+        return dict(result.verify_hashes)
+    if result.match_result != "matched" or not result.source_hashes:
+        return dict(result.verify_hashes)
+    merged = dict(result.verify_hashes)
+    src = result.source_hashes
+    for k in ("md5", "sha256", "sha512"):
+        if not (merged.get(k) or "").strip() and (src.get(k) or "").strip():
+            merged[k] = src[k]
+    return merged
+
+
 def _hash_dict_has_values(h: Optional[dict]) -> bool:
     """空の {} や全キー空文字のときは False（HashRecord を作らない）"""
     if not h:
@@ -488,6 +510,7 @@ class ImagingService:
         """イメージング完了処理: DB更新"""
         actor_name = self._job_actors.pop(result.job_id, "MFEPS Auto")
         job = None
+        verify_for_cache = result.verify_hashes
         try:
             with session_scope() as session:
                 job = session.get(ImagingJob, result.job_id)
@@ -516,14 +539,19 @@ class ImagingService:
                     )
                     session.add(source_hash)
 
-                if _hash_dict_has_values(result.verify_hashes):
+                verify_for_db = _merge_e01_verify_hashes_from_source(
+                    job, result
+                )
+                if verify_for_db is not None:
+                    verify_for_cache = verify_for_db
+                if verify_for_db and _hash_dict_has_values(verify_for_db):
                     verify_hash = HashRecord(
                         job_id=result.job_id,
                         target="verify",
-                        md5=result.verify_hashes.get("md5", ""),
-                        sha1=result.verify_hashes.get("sha1", ""),
-                        sha256=result.verify_hashes.get("sha256", ""),
-                        sha512=result.verify_hashes.get("sha512", ""),
+                        md5=verify_for_db.get("md5", ""),
+                        sha1=verify_for_db.get("sha1", ""),
+                        sha256=verify_for_db.get("sha256", ""),
+                        sha512=verify_for_db.get("sha512", ""),
                         match_result=result.match_result,
                     )
                     session.add(verify_hash)
@@ -547,11 +575,10 @@ class ImagingService:
         except Exception as e:
             logger.error(f"DB更新失敗: {e}")
 
-        # 結果をキャッシュ（UI参照用）
         self._results[result.job_id] = {
             "status": result.status,
             "source_hashes": result.source_hashes,
-            "verify_hashes": result.verify_hashes,
+            "verify_hashes": verify_for_cache,
             "match_result": result.match_result,
             "total_bytes": result.total_bytes,
             "copied_bytes": result.copied_bytes,

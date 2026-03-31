@@ -16,6 +16,13 @@ from src.utils.constants import APP_VERSION
 logger = logging.getLogger("mfeps.report_service")
 
 
+def _examiner_label(case: Optional[Case]) -> str:
+    if not case:
+        return "N/A"
+    t = (case.examiner_name or "").strip()
+    return t or "未記入"
+
+
 def _register_pdf_japanese_font() -> str:
     """Windows 標準の日本語フォントを ReportLab に登録。失敗時は Helvetica。"""
     try:
@@ -140,7 +147,9 @@ class ReportService:
 
                 c.setFont("Courier", 10)
                 for algo in ["md5", "sha256", "sha512"]:
-                    val = hashes.get(algo) or "N/A"
+                    val = (hashes.get(algo) or "").strip()
+                    if not val:
+                        continue
                     c.drawString(50, y, f"{algo.upper().ljust(8)}: {val}")
                     y -= 14
                 y -= 8
@@ -298,10 +307,14 @@ th {{ background: #f0f0f0; }}
         source_h = data.get("source_hashes", {})
         verify_h = data.get("verify_hashes", {})
         for algo in ["md5", "sha256", "sha512"]:
-            s = source_h.get(algo) or "N/A"
-            v = verify_h.get(algo) or "N/A"
-            match = "✅" if s == v and s != "N/A" else "❌"
-            html += f'\n<tr><td>{algo.upper()}</td><td class="hash">{s}</td><td class="hash">{v}</td><td>{match}</td></tr>'
+            s = (source_h.get(algo) or "").strip()
+            v = (verify_h.get(algo) or "").strip()
+            if not s and not v:
+                continue
+            ds = s or "N/A"
+            dv = v or "N/A"
+            match = "✅" if s and v and s == v else "❌"
+            html += f'\n<tr><td>{algo.upper()}</td><td class="hash">{ds}</td><td class="hash">{dv}</td><td>{match}</td></tr>'
 
         match_result = data.get("match_result", "pending")
         match_class = "match" if match_result == "matched" else "mismatch"
@@ -416,7 +429,7 @@ th {{ background: #f0f0f0; }}
             return {
                 "case_number": case.case_number if case else "N/A",
                 "case_name": case.case_name if case else "N/A",
-                "examiner_name": case.examiner_name if case else "N/A",
+                "examiner_name": _examiner_label(case),
                 "evidence_number": evidence.evidence_number if evidence else "N/A",
                 "source_hashes": _hash_fields(source_hash),
                 "verify_hashes": _hash_fields(verify_hash),
