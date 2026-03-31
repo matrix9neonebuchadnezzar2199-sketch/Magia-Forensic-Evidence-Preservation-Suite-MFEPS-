@@ -78,3 +78,58 @@ class TestSchemaCreation:
             db_session.query(EvidenceItem).filter_by(evidence_number="EV-DEL").first()
             is None
         )
+
+
+class TestBigIntegerCapacity:
+    """4GB 超の容量/バイト数が正しく保持されることを確認"""
+
+    def test_evidence_item_large_capacity(self, db_session):
+        case = Case(case_number="TEST-BIG", case_name="BigInteger Test")
+        db_session.add(case)
+        db_session.commit()
+
+        large_capacity = 8_000_000_000_000  # 8 TB
+        ev = EvidenceItem(
+            case_id=case.id,
+            evidence_number="EV-BIG",
+            media_type="usb_hdd",
+            device_capacity_bytes=large_capacity,
+        )
+        db_session.add(ev)
+        db_session.commit()
+
+        fetched = (
+            db_session.query(EvidenceItem)
+            .filter_by(evidence_number="EV-BIG")
+            .first()
+        )
+        assert fetched is not None
+        assert fetched.device_capacity_bytes == large_capacity
+
+    def test_imaging_job_large_bytes(self, db_session):
+        case = Case(case_number="TEST-BIG2", case_name="BigInteger Job")
+        db_session.add(case)
+        db_session.commit()
+
+        ev = EvidenceItem(
+            case_id=case.id,
+            evidence_number="EV-BIG2",
+            media_type="usb_hdd",
+        )
+        db_session.add(ev)
+        db_session.commit()
+
+        large_bytes = 5_000_000_000  # 4 GB 超
+        job = ImagingJob(
+            evidence_id=ev.id,
+            source_path=r"\\.\PhysicalDrive1",
+            total_bytes=large_bytes,
+            copied_bytes=large_bytes,
+        )
+        db_session.add(job)
+        db_session.commit()
+
+        fetched = db_session.get(ImagingJob, job.id)
+        assert fetched is not None
+        assert fetched.total_bytes == large_bytes
+        assert fetched.copied_bytes == large_bytes
