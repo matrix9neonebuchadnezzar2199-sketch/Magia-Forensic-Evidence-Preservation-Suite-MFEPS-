@@ -117,7 +117,7 @@ def create_layout(content_builder):
         # ---- スペーサー + バージョン ----
         ui.space()
         with ui.row().classes("q-pa-md items-center"):
-            ui.label("v2.0.0").classes("text-caption text-grey-6")
+            ui.label("v2.1.0").classes("text-caption text-grey-6")
 
     # ---------- メインコンテンツ ----------
     with ui.column().classes("q-pa-lg full-width fade-in"):

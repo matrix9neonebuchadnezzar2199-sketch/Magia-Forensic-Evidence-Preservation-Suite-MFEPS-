@@ -35,6 +35,39 @@ Windows 環境上で **インストール不要・管理者権限で起動する
 | ⛓️ Chain of Custody | 証拠管理連鎖の記録・タイムライン表示・エクスポート |
 | 📋 監査ログ | SHA-256 ハッシュチェーンによる改竄検知付き監査ログ |
 | ⚖️ 法的準拠 | 証拠保全ガイドライン第10版 / NIST CFTT 準拠設計 |
+| 💿 E01 出力 | USB/HDD を Expert Witness Format（E01）で保全（libewf / `ewfacquire`、オプション） |
+
+---
+
+## 💿 E01 出力 (Phase 1)
+
+MFEPS は **libewf** の `ewfacquire` を subprocess で呼び出し、USB/HDD を **E01 (EnCase Evidence File)** 形式で保全できます。バイナリは同梱せず、ユーザーが入手して配置します。
+
+### 機能
+
+- EnCase 5 / 6 / 7 および EWFX（`-f`）に対応した E01 系出力
+- deflate 圧縮（`method:level` 形式、`none` / `empty-block` / `fast` / `best`）
+- 設定可能なセグメントサイズ（バイト単位、`encase6` では大容量セグメント可）
+- ケース番号・証拠番号・鑑識者名・説明・備考の E01 ヘッダ埋め込み
+- 取得時の MD5 と、オプションで SHA-1 / SHA-256（`-d`）
+- `ewfverify` による取得後の自動検証（パス未設定時はスキップ）
+- **設定画面**でのパス指定・接続テスト・デフォルト取得パラメータ（`app.storage` 優先）
+- HTML / PDF レポートへの E01 情報セクション
+- 監査ログへのコマンドライン記録
+
+### セットアップ
+
+1. `ewfacquire.exe`（および任意で `ewfverify.exe`）を配置する（手順は [`libs/README_ewftools.md`](libs/README_ewftools.md)）。
+2. `.env` の `EWFACQUIRE_PATH` / `EWFVERIFY_PATH` を設定するか、**設定 → E01 出力**でパスを入力し **接続テスト** を成功させる。
+3. **USB/HDD** ウィザードで出力形式 **E01** を選択する。
+
+### ライセンス
+
+`ewfacquire` / `ewfverify` は **LGPL-3.0+** です。MFEPS 本体（MIT）とは別物としてユーザーが入手・配置してください。詳細は [`THIRD_PARTY_LICENSES.md`](THIRD_PARTY_LICENSES.md)。
+
+### 実機統合テスト
+
+物理 USB および本番ツールを用いた検証手順・記録テンプレートは [`tests/integration/README.md`](tests/integration/README.md) を参照してください。
 
 ---
 
@@ -57,7 +90,7 @@ Windows 環境上で **インストール不要・管理者権限で起動する
 │ 📄 REPORT│  └────┴────┴────┴────┴────┘         │
 │ 📋 AUDIT │                                       │
 │          │  出力先ディスク容量 ██████░░░░ 62%     │
-│ v2.0.0   │                                       │
+│ v2.1.0   │                                       │
 ├──────────┴───────────────────────────────────────┤
 │  準備完了                                        │
 └──────────────────────────────────────────────────┘
@@ -383,6 +416,19 @@ It requires **no installation** — just run with administrator privileges and a
 | 📋 Audit Log | Tamper-evident SHA-256 hash-chained audit trail |
 | 🔐 Authentication | Local password authentication with session management |
 | ⚖️ Legal Compliance | Designed per Japanese Digital Forensic Guidelines (10th ed.) / NIST CFTT |
+| 💿 E01 output | USB/HDD imaging to Expert Witness Format via libewf `ewfacquire` (optional) |
+
+### E01 output (Phase 1)
+
+MFEPS can acquire USB/HDD to **E01** using **libewf** `ewfacquire` (subprocess). Binaries are **not** bundled; you must supply them.
+
+**Features:** configurable segment size and `encase5`/`encase6`/`encase7`/`ewfx`, deflate `method:level` compression, case/evidence/examiner metadata, optional `ewfverify`, settings UI with connection test, HTML/PDF report section, audit log of command line.
+
+**Setup:** place `ewfacquire.exe` (and optionally `ewfverify.exe`), set `EWFACQUIRE_PATH` / `EWFVERIFY_PATH` in `.env` or in **Settings → E01**, run **connection test**, then choose **E01** on the USB/HDD wizard. See [`libs/README_ewftools.md`](libs/README_ewftools.md).
+
+**License:** LGPL-3.0+ for libewf tools; see [`THIRD_PARTY_LICENSES.md`](THIRD_PARTY_LICENSES.md).
+
+**Hardware integration test plan:** [`tests/integration/README.md`](tests/integration/README.md).
 
 ## 🚀 Quick Start
 

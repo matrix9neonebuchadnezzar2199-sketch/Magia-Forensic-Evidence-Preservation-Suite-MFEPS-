@@ -1,0 +1,10 @@
+Status: at 1%.
+        acquired 149 MiB (157057024 bytes) of total 14 GiB (15703474176 bytes).
+        completion in 51 minute(s) and 9 second(s) with 4.8 MiB/s (5065636 bytes/second).
+
+Acquiry completed at: Wed Mar  9 11:19:16 2016
+Written: 14 GiB (15703475648 bytes) in 42 minute(s) and 23 second(s) with 5.9 MiB/s (6175177 bytes/second).
+MD5 hash calculated over data: 79187ed64a07494d9adc0066b493396b
+SHA1 hash calculated over data: 39827c8401dfc2bd526fe38aee5e18d85c72dbfc
+SHA256 hash calculated over data: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+ewfacquire: SUCCESS

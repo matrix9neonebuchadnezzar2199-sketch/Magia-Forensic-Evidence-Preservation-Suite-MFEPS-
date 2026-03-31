@@ -1,0 +1,12 @@
+{
+  "description": "USB メモリ A のリファレンス取得（FTK Imager / dd 等）に対するハッシュ。実データに合わせてコピーして test_reference_hashes.json として保存する。",
+  "device_note": "\\\\.\\PhysicalDriveN",
+  "reference_image_path": "D:/reference/usb_a.dd",
+  "tool_used": "FTK Imager / certutil / MFEPS RAW",
+  "hashes": {
+    "md5": "",
+    "sha1": "",
+    "sha256": ""
+  },
+  "captured_at_utc": "2026-03-31T12:00:00Z"
+}
