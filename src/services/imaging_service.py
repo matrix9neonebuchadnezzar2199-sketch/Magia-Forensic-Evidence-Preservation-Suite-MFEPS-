@@ -95,7 +95,7 @@ class ImagingService:
             if not avail["ewfacquire_available"]:
                 raise RuntimeError(
                     "E01 出力には ewfacquire.exe が必要です。"
-                    "設定画面でパスを指定するか、.env の EWFACQUIRE_PATH を設定してください。"
+                    "libs/ewfacquire.exe を配置するか、設定画面または .env の EWFACQUIRE_PATH を指定してください。"
                 )
 
         _stored: dict = {}

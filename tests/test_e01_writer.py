@@ -21,8 +21,8 @@ class TestCheckAvailable:
             cfg = MagicMock()
             cfg.ewfacquire_path = ""
             cfg.ewfverify_path = ""
-            cfg.ewfacquire_available = False
-            cfg.ewfverify_available = False
+            cfg.resolve_ewfacquire_path = MagicMock(return_value="")
+            cfg.resolve_ewfverify_path = MagicMock(return_value="")
             mock_cfg.return_value = cfg
 
             result = E01Writer.check_available()
@@ -34,8 +34,8 @@ class TestCheckAvailable:
             cfg = MagicMock()
             cfg.ewfacquire_path = "/nonexistent/ewfacquire.exe"
             cfg.ewfverify_path = ""
-            cfg.ewfacquire_available = False
-            cfg.ewfverify_available = False
+            cfg.resolve_ewfacquire_path = MagicMock(return_value="")
+            cfg.resolve_ewfverify_path = MagicMock(return_value="")
             mock_cfg.return_value = cfg
 
             result = E01Writer.check_available()
@@ -47,6 +47,9 @@ class TestBuildCommand:
         with patch("src.core.e01_writer.get_config") as mock_cfg:
             cfg = MagicMock()
             cfg.ewfacquire_path = r"C:\libs\ewfacquire.exe"
+            cfg.resolve_ewfacquire_path = MagicMock(
+                return_value=r"C:\libs\ewfacquire.exe"
+            )
             mock_cfg.return_value = cfg
 
             writer = E01Writer()
@@ -105,6 +108,7 @@ class TestBuildCommand:
         with patch("src.core.e01_writer.get_config") as mock_cfg:
             cfg = MagicMock()
             cfg.ewfacquire_path = "ewfacquire"
+            cfg.resolve_ewfacquire_path = MagicMock(return_value="ewfacquire")
             mock_cfg.return_value = cfg
 
             writer = E01Writer()

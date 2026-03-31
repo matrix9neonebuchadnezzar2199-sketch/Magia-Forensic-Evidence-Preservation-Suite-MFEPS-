@@ -126,30 +126,47 @@ class E01Writer:
         return self._current_progress.copy()
 
     @staticmethod
+    def _resolve_stored_tool_path(stored: str) -> str | None:
+        """設定ストレージのパスを base_dir 基準で解決。実在ファイルなら絶対パスを返す。"""
+        if not (stored or "").strip():
+            return None
+        cfg = get_config()
+        p = Path(stored.strip())
+        if not p.is_absolute():
+            p = (cfg.base_dir / p).resolve()
+        else:
+            p = p.resolve()
+        if p.is_file():
+            return str(p)
+        return None
+
+    @staticmethod
     def _resolve_ewfacquire_path() -> str:
-        """app.storage.general > .env の順でパスを解決（storage は実在ファイルのとき優先）"""
+        """storage（実在時）> 設定 / 自動 libs 検索"""
         try:
             from nicegui import app as nicegui_app
 
-            stored = (nicegui_app.storage.general.get("ewfacquire_path") or "").strip()
-            if stored and Path(stored).is_file():
-                return stored
+            raw = (nicegui_app.storage.general.get("ewfacquire_path") or "").strip()
+            resolved = E01Writer._resolve_stored_tool_path(raw)
+            if resolved:
+                return resolved
         except Exception:
             pass
-        return (get_config().ewfacquire_path or "").strip()
+        return get_config().resolve_ewfacquire_path()
 
     @staticmethod
     def _resolve_ewfverify_path() -> str:
-        """ewfverify パス（storage 優先ルールは ewfacquire と同じ）"""
+        """ewfverify（storage 優先、その後設定 / 自動 libs 検索）"""
         try:
             from nicegui import app as nicegui_app
 
-            stored = (nicegui_app.storage.general.get("ewfverify_path") or "").strip()
-            if stored and Path(stored).is_file():
-                return stored
+            raw = (nicegui_app.storage.general.get("ewfverify_path") or "").strip()
+            resolved = E01Writer._resolve_stored_tool_path(raw)
+            if resolved:
+                return resolved
         except Exception:
             pass
-        return (get_config().ewfverify_path or "").strip()
+        return get_config().resolve_ewfverify_path()
 
     @staticmethod
     def check_available() -> dict:
@@ -216,16 +233,18 @@ class E01Writer:
         ver_resolved = base.get("ewfverify_path") or ""
 
         # ewfacquire
-        if not cfg_acq and not stored_acq:
+        if base["ewfacquire_available"]:
+            base["ewfacquire_status"] = "利用可能"
+        elif not acq_resolved:
             base["ewfacquire_status"] = "未設定"
             diag.append(
-                "ewfacquire のパスが未設定です（.env の EWFACQUIRE_PATH または設定画面）。"
+                "ewfacquire が見つかりません。"
+                "プロジェクトの libs/ewfacquire.exe を置くか、"
+                ".env の EWFACQUIRE_PATH または設定画面でパスを指定してください。"
             )
         elif acq_resolved and not Path(acq_resolved).is_file():
             base["ewfacquire_status"] = "ファイル未検出"
             diag.append(f"指定パスにファイルが存在しません: {acq_resolved}")
-        elif base["ewfacquire_available"]:
-            base["ewfacquire_status"] = "利用可能"
         else:
             base["ewfacquire_status"] = "実行エラー"
             diag.append(
@@ -234,13 +253,13 @@ class E01Writer:
             )
 
         # ewfverify
-        if not cfg_ver and not stored_ver:
+        if base["ewfverify_available"]:
+            base["ewfverify_status"] = "利用可能"
+        elif not ver_resolved:
             base["ewfverify_status"] = "未設定（検証スキップ）"
         elif ver_resolved and not Path(ver_resolved).is_file():
             base["ewfverify_status"] = "ファイル未検出"
             diag.append(f"指定パスにファイルが存在しません: {ver_resolved}")
-        elif base["ewfverify_available"]:
-            base["ewfverify_status"] = "利用可能"
         else:
             base["ewfverify_status"] = "実行エラー"
 

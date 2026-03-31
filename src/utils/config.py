@@ -65,11 +65,15 @@ class MFEPSConfig(BaseSettings):
     # E01 (ewfacquire / ewfverify)
     ewfacquire_path: str = Field(
         default="",
-        description="ewfacquire.exe のパス（空の場合は E01 出力を無効化）",
+        description=(
+            "ewfacquire.exe のパス（空なら base_dir/libs/ewfacquire.exe 等を自動検索）"
+        ),
     )
     ewfverify_path: str = Field(
         default="",
-        description="ewfverify.exe のパス（空の場合は検証をスキップ）",
+        description=(
+            "ewfverify.exe のパス（空なら base_dir/libs/ewfverify.exe 等を自動検索）"
+        ),
     )
     e01_segment_size_bytes: int = Field(
         default=1_500_000_000,
@@ -134,13 +138,53 @@ class MFEPSConfig(BaseSettings):
     def libs_dir(self) -> Path:
         return self.base_dir / "libs"
 
+    def _candidate_paths_for_tool(
+        self, configured: str, exe_name: str
+    ) -> list[Path]:
+        """設定値（相対は base_dir 基準）のあと、libs/ と libs/ewftools-x64/ を試す。"""
+        seen: set[str] = set()
+        out: list[Path] = []
+
+        def add(p: Path) -> None:
+            key = str(p.resolve())
+            if key not in seen:
+                seen.add(key)
+                out.append(p.resolve())
+
+        if (configured or "").strip():
+            p = Path(configured.strip())
+            if not p.is_absolute():
+                p = (self.base_dir / p).resolve()
+            else:
+                p = p.resolve()
+            add(p)
+
+        libs = self.base_dir / "libs"
+        add(libs / exe_name)
+        add(libs / "ewftools-x64" / exe_name)
+        return out
+
+    def resolve_ewfacquire_path(self) -> str:
+        """利用する ewfacquire.exe の絶対パス（見つからなければ空文字）。"""
+        for p in self._candidate_paths_for_tool(self.ewfacquire_path, "ewfacquire.exe"):
+            if p.is_file():
+                return str(p)
+        return ""
+
+    def resolve_ewfverify_path(self) -> str:
+        """利用する ewfverify.exe の絶対パス（見つからなければ空文字）。"""
+        for p in self._candidate_paths_for_tool(self.ewfverify_path, "ewfverify.exe"):
+            if p.is_file():
+                return str(p)
+        return ""
+
     @property
     def ewfacquire_available(self) -> bool:
-        return bool(self.ewfacquire_path) and Path(self.ewfacquire_path).is_file()
+        return bool(self.resolve_ewfacquire_path())
 
     @property
     def ewfverify_available(self) -> bool:
-        return bool(self.ewfverify_path) and Path(self.ewfverify_path).is_file()
+        return bool(self.resolve_ewfverify_path())
 
 
 # シングルトン設定インスタンス

@@ -2,6 +2,8 @@
 
 MFEPS で E01 形式の証拠保全を行うには、libewf の `ewfacquire.exe` が必要です。
 
+**配置のみで利用可:** リポジトリルート直下の `libs/ewfacquire.exe`（または `libs/ewftools-x64/ewfacquire.exe`）に置けば、`.env` にパスを書かなくても MFEPS が自動検出します（`EWFACQUIRE_PATH` は任意）。
+
 ## 入手方法
 
 ### 方法 1: ビルド済みバイナリ

@@ -115,7 +115,8 @@ def build_usb_hdd_page():
 
                     if not _e01_available:
                         ui.label(
-                            "E01 出力を有効にするには .env で EWFACQUIRE_PATH を指定"
+                            "E01 を使うには libs/ewfacquire.exe を配置するか、"
+                            "設定 → E01 出力、または .env の EWFACQUIRE_PATH でパスを指定してください"
                         ).classes("text-caption text-grey-6")
 
                 e01_panel = ui.column().classes("full-width q-mt-sm")
