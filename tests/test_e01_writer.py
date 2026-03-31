@@ -6,6 +6,7 @@ import re
 from unittest.mock import MagicMock, patch
 
 from src.core.e01_writer import E01Params, E01Writer
+from src.services.imaging_service import _parse_e01_remaining_to_seconds
 from src.utils.constants import (
     E01_ACQUIRED_PATTERN,
     E01_BYTES_PATTERN,
@@ -248,3 +249,23 @@ class TestCrAwareStreamReader:
             "Status: at 100%.",
             "Acquiry completed at: Sun",
         ]
+
+
+class TestEtaParser:
+    def test_minutes_and_seconds(self):
+        s = "completion in 51 minute(s) and 9 second(s) with 4.8 MiB/s (5065636 bytes/second)."
+        assert _parse_e01_remaining_to_seconds(s) == 51 * 60 + 9
+
+    def test_hours_minutes_seconds(self):
+        s = "completion in 2 hour(s) and 15 minute(s) and 30 second(s) with 10.0 MiB/s (10485760 bytes/second)."
+        assert _parse_e01_remaining_to_seconds(s) == 2 * 3600 + 15 * 60 + 30
+
+    def test_empty_string(self):
+        assert _parse_e01_remaining_to_seconds("") == 0.0
+
+    def test_no_match(self):
+        assert _parse_e01_remaining_to_seconds("some unrelated text") == 0.0
+
+    def test_singular_forms(self):
+        s = "completion in 1 minute(s) and 1 second(s) with 50.0 MiB/s (52428800 bytes/second)."
+        assert _parse_e01_remaining_to_seconds(s) == 61.0

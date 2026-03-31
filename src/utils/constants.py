@@ -147,3 +147,11 @@ E01_FORMAT_OPTIONS = {
     "encase7": "EnCase 7 (.E01)  — 最新",
     "ewfx": "EWFX (.Ex01)     — 拡張フォーマット",
 }
+
+# E01 残り時間パーサー（"completion in NN minute(s) and NN second(s) ..." から秒数を抽出）
+E01_REMAINING_PATTERN = re.compile(
+    r"completion\s+in\s+"
+    r"(?:(\d+)\s+hour\(?s?\)?\s+and\s+)?"
+    r"(\d+)\s+minute\(?s?\)?\s+and\s+"
+    r"(\d+)\s+second"
+)

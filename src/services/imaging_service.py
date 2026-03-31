@@ -16,7 +16,22 @@ from src.models.database import session_scope
 from src.models.enums import OutputFormat
 from src.models.schema import ImagingJob, HashRecord, ChainOfCustody
 from src.utils.config import get_config
+from src.utils.constants import E01_REMAINING_PATTERN
 from src.utils.path_sanitize import sanitize_path_component
+
+
+def _parse_e01_remaining_to_seconds(remaining_str: str) -> float:
+    """ewfacquire の 'completion in N minute(s) and N second(s)' を秒数に変換。"""
+    if not remaining_str:
+        return 0.0
+    m = E01_REMAINING_PATTERN.search(remaining_str)
+    if not m:
+        return 0.0
+    hours = int(m.group(1) or 0)
+    minutes = int(m.group(2) or 0)
+    seconds = int(m.group(3) or 0)
+    return float(hours * 3600 + minutes * 60 + seconds)
+
 
 logger = logging.getLogger("mfeps.imaging_service")
 
@@ -613,13 +628,16 @@ class ImagingService:
             speed_mibps = (
                 speed_b / (1024 * 1024) if speed_b > 0 else 0.0
             )
+            eta = _parse_e01_remaining_to_seconds(
+                p.get("remaining") or ""
+            )
             return {
                 "status": p.get("status", "imaging"),
                 "copied_bytes": acquired,
                 "total_bytes": total,
                 "speed_mibps": speed_mibps,
                 "e01_percent": p.get("percent", 0),
-                "eta_seconds": 0.0,
+                "eta_seconds": eta,
                 "error_count": 0,
                 "e01_remaining": p.get("remaining", ""),
                 "e01_speed_display": p.get("speed_display", ""),
