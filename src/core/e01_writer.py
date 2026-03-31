@@ -102,7 +102,8 @@ class E01VerifyResult:
     stored_hashes: dict = field(default_factory=dict)
     computed_hashes: dict = field(default_factory=dict)
     return_code: int = -1
-    output: str = ""
+    output: str = ""  # stdout + stderr（結合）。診断時はここに SHA1/SHA-1 が含まれるか確認
+    log_file_path: str = ""
     skipped: bool = False
     skip_reason: str = ""
     error_message: str = ""
@@ -461,14 +462,18 @@ class E01Writer:
             return result
 
         try:
+            log_path = str(Path(e01_first_path).with_name("image_ewfverify.log"))
             cmd = [
                 ver_path,
+                "-l",
+                log_path,
                 "-d",
                 "sha1",
                 "-d",
                 "sha256",
                 e01_first_path,
             ]
+            result.log_file_path = log_path
 
             proc = await asyncio.create_subprocess_exec(
                 *cmd,
@@ -483,6 +488,16 @@ class E01Writer:
 
             result.return_code = proc.returncode if proc.returncode is not None else -1
             result.output = output
+
+            has_sha1_in_output = bool(
+                re.search(r"SHA[- ]?1", output, re.IGNORECASE)
+            )
+            logger.info(
+                "ewfverify 出力: len=%s, テキストに SHA1/SHA-1 表記あり: %s (log=%s)",
+                len(output),
+                has_sha1_in_output,
+                log_path,
+            )
 
             for match in re.finditer(EWFVERIFY_STORED_HASH_PATTERN, output):
                 key = E01Writer._normalize_ewf_algo_key(match.group(1))

@@ -40,9 +40,6 @@ def build_usb_hdd_page():
         with ui.step("ドライブ選択", icon="usb"):
             ui.label("接続中のデバイスから対象を選択してください").classes("text-body2 text-grey-5 q-mb-md")
 
-            device_container = ui.column().classes("full-width gap-2")
-            status_label = ui.label("").classes("text-caption text-grey-6")
-
             async def refresh_devices():
                 device_container.clear()
                 state["selected_device"] = None
@@ -59,7 +56,13 @@ def build_usb_hdd_page():
                     for dev in devices:
                         _render_device_option(dev, state, stepper)
 
-            ui.button("🔄 デバイス検出", on_click=refresh_devices, color="primary").props("unelevated")
+            # 一覧・次への直前に置かない（誤タップ防止）。説明文の直下。
+            ui.button("🔄 デバイス検出", on_click=refresh_devices, color="primary").props(
+                "unelevated"
+            ).classes("q-mb-md")
+
+            device_container = ui.column().classes("full-width gap-2")
+            status_label = ui.label("").classes("text-caption text-grey-6")
 
             with ui.stepper_navigation():
                 async def on_step1_next():
