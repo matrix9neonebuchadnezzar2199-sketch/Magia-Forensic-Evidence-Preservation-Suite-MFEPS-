@@ -139,7 +139,7 @@ class ReportService:
                 y -= 18
 
                 c.setFont("Courier", 10)
-                for algo in ["md5", "sha1", "sha256", "sha512"]:
+                for algo in ["md5", "sha256", "sha512"]:
                     val = hashes.get(algo) or "N/A"
                     c.drawString(50, y, f"{algo.upper().ljust(8)}: {val}")
                     y -= 14
@@ -297,7 +297,7 @@ th {{ background: #f0f0f0; }}
 
         source_h = data.get("source_hashes", {})
         verify_h = data.get("verify_hashes", {})
-        for algo in ["md5", "sha1", "sha256", "sha512"]:
+        for algo in ["md5", "sha256", "sha512"]:
             s = source_h.get(algo) or "N/A"
             v = verify_h.get(algo) or "N/A"
             match = "✅" if s == v and s != "N/A" else "❌"
@@ -404,13 +404,11 @@ th {{ background: #f0f0f0; }}
                 if not hr:
                     return {
                         "md5": "",
-                        "sha1": "",
                         "sha256": "",
                         "sha512": "",
                     }
                 return {
                     "md5": hr.md5 or "",
-                    "sha1": hr.sha1 or "",
                     "sha256": hr.sha256 or "",
                     "sha512": getattr(hr, "sha512", None) or "",
                 }

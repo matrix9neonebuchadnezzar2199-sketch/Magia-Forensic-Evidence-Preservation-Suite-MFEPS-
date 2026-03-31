@@ -67,7 +67,6 @@ class E01Params:
     media_type: str = "removable"
     media_flags: str = "physical"
 
-    calculate_sha1: bool = True
     calculate_sha256: bool = True
 
 
@@ -81,7 +80,6 @@ class E01Result:
     total_bytes: int = 0
     acquired_bytes: int = 0
     md5: str = ""
-    sha1: str = ""
     sha256: str = ""
     elapsed_seconds: float = 0.0
     ewfacquire_return_code: int = -1
@@ -102,7 +100,7 @@ class E01VerifyResult:
     stored_hashes: dict = field(default_factory=dict)
     computed_hashes: dict = field(default_factory=dict)
     return_code: int = -1
-    output: str = ""  # stdout + stderr（結合）。診断時はここに SHA1/SHA-1 が含まれるか確認
+    output: str = ""  # stdout + stderr（結合）
     log_file_path: str = ""
     skipped: bool = False
     skip_reason: str = ""
@@ -319,8 +317,6 @@ class E01Writer:
         if params.zero_on_error:
             cmd.append("-w")
 
-        if params.calculate_sha1:
-            cmd.extend(["-d", "sha1"])
         if params.calculate_sha256:
             cmd.extend(["-d", "sha256"])
 
@@ -377,10 +373,13 @@ class E01Writer:
             return_code = await self._process.wait()
 
             # ewfacquire は最後の Status を 100% 未満で出さず Acquiry completed に移るため、
-            # 完了直後に UI を 100% へ（結果解析の前）
+            # 完了直後に UI を 100% へ。バーは copied/total 比なので total に揃える。
             if self._progress_callback and not self._cancel_requested:
                 self._current_progress["percent"] = 100.0
                 self._current_progress["status"] = "finalizing"
+                tb = int(self._current_progress.get("total_bytes") or 0)
+                if tb > 0:
+                    self._current_progress["acquired_bytes"] = tb
                 self._progress_callback(dict(self._current_progress))
 
             elapsed = time.monotonic() - start_time
@@ -418,7 +417,6 @@ class E01Writer:
 
             full_output = result.ewfacquire_stdout
             result.md5 = self._extract_hash_from_output(full_output, "MD5")
-            result.sha1 = self._extract_hash_from_output(full_output, "SHA1")
             result.sha256 = self._extract_hash_from_output(full_output, "SHA256")
             result.acquired_bytes = self._extract_written_bytes(full_output)
             result.total_bytes = result.acquired_bytes
@@ -426,13 +424,17 @@ class E01Writer:
             result.success = True
             self._current_progress["status"] = "completed"
             self._current_progress["percent"] = 100.0
+            if result.acquired_bytes > 0:
+                self._current_progress["acquired_bytes"] = result.acquired_bytes
+            if result.total_bytes > 0:
+                self._current_progress["total_bytes"] = result.total_bytes
 
             logger.info(
-                "E01 取得成功: %s segments, %s bytes, MD5=%s, SHA1=%s",
+                "E01 取得成功: %s segments, %s bytes, MD5=%s, SHA256=%s",
                 result.segment_count,
                 f"{result.acquired_bytes:,}",
                 result.md5,
-                result.sha1,
+                result.sha256,
             )
 
         except asyncio.CancelledError:
@@ -468,8 +470,6 @@ class E01Writer:
                 "-l",
                 log_path,
                 "-d",
-                "sha1",
-                "-d",
                 "sha256",
                 e01_first_path,
             ]
@@ -488,16 +488,6 @@ class E01Writer:
 
             result.return_code = proc.returncode if proc.returncode is not None else -1
             result.output = output
-
-            has_sha1_in_output = bool(
-                re.search(r"SHA[- ]?1", output, re.IGNORECASE)
-            )
-            logger.info(
-                "ewfverify 出力: len=%s, テキストに SHA1/SHA-1 表記あり: %s (log=%s)",
-                len(output),
-                has_sha1_in_output,
-                log_path,
-            )
 
             for match in re.finditer(EWFVERIFY_STORED_HASH_PATTERN, output):
                 key = E01Writer._normalize_ewf_algo_key(match.group(1))

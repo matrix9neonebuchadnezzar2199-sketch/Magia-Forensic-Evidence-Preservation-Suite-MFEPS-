@@ -70,7 +70,6 @@ class TestBuildCommand:
                 media_type="removable",
                 media_flags="physical",
                 zero_on_error=True,
-                calculate_sha1=True,
                 calculate_sha256=True,
             )
             cmd, log_path = writer.build_command(params)
@@ -98,7 +97,6 @@ class TestBuildCommand:
 
             d_indices = [i for i, x in enumerate(cmd) if x == "-d"]
             d_values = [cmd[i + 1] for i in d_indices]
-            assert "sha1" in d_values
             assert "sha256" in d_values
 
             assert cmd[-1] == r"\\.\PhysicalDrive1"
@@ -118,7 +116,6 @@ class TestBuildCommand:
                 source_path="/dev/sdb",
                 output_dir="/tmp",
                 zero_on_error=False,
-                calculate_sha1=False,
                 calculate_sha256=False,
             )
             cmd, _ = writer.build_command(params)
@@ -137,25 +134,6 @@ class TestOutputParsing:
         assert (
             E01Writer._extract_hash_from_output(output, "MD5")
             == "ae1ce8f5ac079d3ee93f97fe3792bda3"
-        )
-
-    def test_extract_sha1(self):
-        output = (
-            "SHA1 hash calculated over data:\tab12cd34ef5678901234567890abcdef12345678\n"
-        )
-        assert (
-            E01Writer._extract_hash_from_output(output, "SHA1")
-            == "ab12cd34ef5678901234567890abcdef12345678"
-        )
-
-    def test_extract_sha1_hyphenated_label(self):
-        """libewf は "SHA-1 hash calculated" と出力する場合がある"""
-        output = (
-            "SHA-1 hash calculated over data:\tab12cd34ef5678901234567890abcdef12345678\n"
-        )
-        assert (
-            E01Writer._extract_hash_from_output(output, "SHA1")
-            == "ab12cd34ef5678901234567890abcdef12345678"
         )
 
     def test_extract_sha256(self):

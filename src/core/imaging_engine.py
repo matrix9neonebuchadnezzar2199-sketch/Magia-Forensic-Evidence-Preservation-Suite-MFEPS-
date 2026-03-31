@@ -49,7 +49,7 @@ class ImagingResult(BaseModel):
     """イメージング結果"""
     job_id: str
     status: str = "completed"            # completed / failed / cancelled
-    source_hashes: dict = Field(default_factory=dict)  # {md5, sha1, sha256}
+    source_hashes: dict = Field(default_factory=dict)  # {md5, sha1?, sha256, ...}
     verify_hashes: Optional[dict] = None
     match_result: str = "pending"        # matched / mismatched / pending
     total_bytes: int = 0

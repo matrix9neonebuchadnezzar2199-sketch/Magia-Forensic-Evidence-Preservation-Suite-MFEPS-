@@ -83,9 +83,10 @@ class HashService:
 
             result = {
                 "md5_match": source.md5 == verify.md5,
-                "sha1_match": source.sha1 == verify.sha1,
                 "sha256_match": source.sha256 == verify.sha256,
             }
+            if (source.sha1 or verify.sha1):
+                result["sha1_match"] = source.sha1 == verify.sha1
             if (getattr(source, "sha512", "") or getattr(verify, "sha512", "")):
                 result["sha512_match"] = source.sha512 == verify.sha512
             result["all_match"] = all(

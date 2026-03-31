@@ -44,7 +44,7 @@ def render_hash_display(hashes: dict, label: str = "ハッシュ値"):
     """トリプルハッシュ表示"""
     with ui.card().classes("q-pa-md full-width"):
         ui.label(label).classes("text-subtitle2 text-weight-bold q-mb-sm")
-        for algo in ["md5", "sha1", "sha256", "sha512"]:
+        for algo in ["md5", "sha256", "sha512"]:
             value = hashes.get(algo, "")
             if not value and algo == "sha512":
                 continue
@@ -58,7 +58,7 @@ def render_hash_comparison(source: dict, verify: dict, match_result: str):
     with ui.card().classes("q-pa-md full-width"):
         ui.label("🔍 トリプルハッシュ検証").classes("text-subtitle1 text-weight-bold q-mb-md")
 
-        for algo in ["md5", "sha1", "sha256", "sha512"]:
+        for algo in ["md5", "sha256", "sha512"]:
             src_val = source.get(algo, "").lower()
             ver_val = verify.get(algo, "").lower()
             if not src_val and not ver_val and algo == "sha512":

@@ -298,7 +298,6 @@ class ImagingService:
                 or "USB" in (device.media_type or "").upper()
                 else "fixed"
             ),
-            calculate_sha1=True,
             calculate_sha256=True,
         )
 
@@ -370,7 +369,6 @@ class ImagingService:
                     match_result = "matched"
                     verify_hashes = {
                         "md5": verify.computed_hashes.get("MD5", ""),
-                        "sha1": verify.computed_hashes.get("SHA1", ""),
                         "sha256": verify.computed_hashes.get("SHA256", ""),
                     }
                     audit.add_entry(
@@ -390,7 +388,6 @@ class ImagingService:
                     match_result = "mismatched"
                     verify_hashes = {
                         "md5": verify.computed_hashes.get("MD5", ""),
-                        "sha1": verify.computed_hashes.get("SHA1", ""),
                         "sha256": verify.computed_hashes.get("SHA256", ""),
                     }
                     audit.add_entry(
@@ -406,15 +403,6 @@ class ImagingService:
                             ensure_ascii=False,
                         ),
                     )
-
-                # 一部 libewf ビルドは stdout に SHA-1 行を出さないが E01 内と ewfverify には格納される
-                if not verify.skipped and not e01_result.sha1:
-                    sha1_from_verify = (
-                        verify.computed_hashes.get("SHA1", "")
-                        or verify.stored_hashes.get("SHA1", "")
-                    )
-                    if sha1_from_verify:
-                        e01_result.sha1 = sha1_from_verify
 
             if e01_result.error_code == "E3006":
                 status = "cancelled"
@@ -437,7 +425,6 @@ class ImagingService:
                 status=status,
                 source_hashes={
                     "md5": e01_result.md5,
-                    "sha1": e01_result.sha1,
                     "sha256": e01_result.sha256,
                 },
                 verify_hashes=verify_hashes,
