@@ -24,7 +24,9 @@ output/
 reports/
 backup/
 
-# DLL (ユーザー個別配置)
+# DLL / 実行ファイル（ユーザー個別配置・サブフォルダ含む）
+libs/**/*.dll
+libs/**/*.exe
 libs/*.dll
 libs/*.exe
 
@@ -41,6 +43,3 @@ desktop.ini
 
 # NiceGUI
 .nicegui/
-
-libs/*.exe
-libs/*.dll

@@ -27,11 +27,30 @@ mfeps/
     ewfinfo.exe       (任意: メタデータ確認用)
 ```
 
+x64 ビルドなどをサブフォルダに置く場合の例:
+
+```
+mfeps/
+  libs/
+    ewftools-x64/
+      ewfacquire.exe
+      ewfverify.exe
+```
+
+このとき `.env` のパスは `libs` 直下ではなく **実際の配置に合わせる**（例: `./libs/ewftools-x64/ewfacquire.exe`）。
+
 ## .env 設定
 
 ```
 EWFACQUIRE_PATH=./libs/ewfacquire.exe
 EWFVERIFY_PATH=./libs/ewfverify.exe
+```
+
+サブフォルダ配置の例:
+
+```
+EWFACQUIRE_PATH=./libs/ewftools-x64/ewfacquire.exe
+EWFVERIFY_PATH=./libs/ewftools-x64/ewfverify.exe
 ```
 
 ## 動作確認
