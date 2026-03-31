@@ -40,11 +40,9 @@ def build_optical_page():
         with ui.step("ドライブ選択", icon="album"):
             ui.label("光学ドライブを選択してください").classes("text-body2 text-grey-5 q-mb-md")
 
-            drive_container = ui.column().classes("full-width gap-2")
-            status_label = ui.label("").classes("text-caption text-grey-6")
-
             async def refresh_drives():
                 drive_container.clear()
+                state["selected_drive"] = None
                 status_label.text = "🔍 ドライブ検出中..."
                 drives = await asyncio.get_running_loop().run_in_executor(
                     None, detect_optical_drives)
@@ -54,7 +52,12 @@ def build_optical_page():
                     for drv in drives:
                         _render_drive_option(drv, state)
 
-            ui.button("🔄 ドライブ検出", on_click=refresh_drives, color="primary").props("unelevated")
+            ui.button("🔄 ドライブ検出", on_click=refresh_drives, color="primary").props(
+                "unelevated"
+            ).classes("q-mb-md")
+
+            drive_container = ui.column().classes("full-width gap-2")
+            status_label = ui.label("").classes("text-caption text-grey-6")
 
             with ui.stepper_navigation():
                 async def on_step1_next():
@@ -149,6 +152,12 @@ def build_optical_page():
                     
                     from src.services.optical_service import get_optical_service
                     svc = get_optical_service()
+                    if state.get("guard_result") is None:
+                        ui.notify(
+                            "コピーガード解析が完了していません。手前のステップからやり直してください。",
+                            type="warning",
+                        )
+                        return
                     prots = state["guard_result"].protections
                     use_pydvdcss = any(
                         getattr(p.type, "value", p.type) == CopyGuardType.CSS.value

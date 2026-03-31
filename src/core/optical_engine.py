@@ -5,6 +5,7 @@ TOC解析、メディア種別判定、CSS/AACS復号統合
 import asyncio
 import logging
 import os
+import threading
 import time
 from pathlib import Path
 from typing import Any, Callable, Optional
@@ -199,8 +200,8 @@ class OpticalImagingEngine:
     def __init__(self, buffer_sectors: int = 32, retry_count: int = 5):
         self.buffer_sectors = buffer_sectors  # 一度に読むセクタ数
         self.retry_count = retry_count
-        self._cancel_event = asyncio.Event()
-        self._pause_event = asyncio.Event()
+        self._cancel_event = threading.Event()
+        self._pause_event = threading.Event()
         self._pause_event.set()
         self._progress = {}
 
@@ -213,6 +214,37 @@ class OpticalImagingEngine:
         use_aacs: bool = False,
         progress_callback: Optional[Callable] = None,
         *,
+        hash_md5: bool = True,
+        hash_sha1: bool = True,
+        hash_sha256: bool = True,
+        hash_sha512: bool = False,
+    ) -> dict:
+        self._cancel_event.clear()
+        self._pause_event.set()
+        loop = asyncio.get_running_loop()
+        return await loop.run_in_executor(
+            None,
+            self._image_optical_sync,
+            drive_path,
+            output_path,
+            analysis,
+            use_pydvdcss,
+            use_aacs,
+            progress_callback,
+            hash_md5,
+            hash_sha1,
+            hash_sha256,
+            hash_sha512,
+        )
+
+    def _image_optical_sync(
+        self,
+        drive_path: str,
+        output_path: str,
+        analysis: OpticalAnalysisResult,
+        use_pydvdcss: bool = False,
+        use_aacs: bool = False,
+        progress_callback: Optional[Callable] = None,
         hash_md5: bool = True,
         hash_sha1: bool = True,
         hash_sha256: bool = True,
@@ -336,7 +368,7 @@ class OpticalImagingEngine:
             while current_lba < total_sectors:
                 if self._cancel_event.is_set():
                     break
-                await self._pause_event.wait()
+                self._pause_event.wait()
 
                 chunk_start_lba = current_lba
                 remaining = total_sectors - current_lba
@@ -372,7 +404,7 @@ class OpticalImagingEngine:
                                 f"リトライ {attempt+1}/{self.retry_count}: "
                                 f"LBA={current_lba}, wait={wait}s, error={e}"
                             )
-                            await asyncio.sleep(wait)
+                            time.sleep(wait)
                         else:
                             logger.error(f"読取失敗（ゼロフィル）: LBA={current_lba}")
                             data = b"\x00" * chunk_size

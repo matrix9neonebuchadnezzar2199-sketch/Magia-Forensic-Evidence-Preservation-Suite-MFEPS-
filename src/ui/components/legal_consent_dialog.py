@@ -117,6 +117,7 @@ async def show_legal_consent_dialog() -> bool:
         ui.label("⚖️ 法的免責事項").classes("text-h6 text-weight-bold q-mb-md")
 
         checkbox_ref: list[ui.checkbox | None] = [None]
+        accept_btn_ref: list[object] = [None]
 
         def _scroll_handler(e):
             cb = checkbox_ref[0]
@@ -128,7 +129,18 @@ async def show_legal_consent_dialog() -> bool:
         ).style("height: 360px;"):
             ui.label(LEGAL_TEXT).classes("text-body2 whitespace-pre-wrap q-pa-md")
 
-        checkbox = ui.checkbox(CONSENT_LABEL).classes("q-mt-md")
+        def _on_checkbox_change(e):
+            btn = accept_btn_ref[0]
+            if btn is None:
+                return
+            if getattr(e, "value", False):
+                btn.enable()
+            else:
+                btn.disable()
+
+        checkbox = ui.checkbox(
+            CONSENT_LABEL, on_change=_on_checkbox_change
+        ).classes("q-mt-md")
         checkbox_ref[0] = checkbox
         checkbox.disable()
 
@@ -140,14 +152,7 @@ async def show_legal_consent_dialog() -> bool:
             ).props("flat")
             accept_btn = ui.button("同意する", color="primary").props("unelevated")
             accept_btn.disable()
-
-        def _on_checkbox_change(e):
-            if getattr(e, "value", False):
-                accept_btn.enable()
-            else:
-                accept_btn.disable()
-
-        checkbox.on_change(_on_checkbox_change)
+            accept_btn_ref[0] = accept_btn
 
         def _try_accept():
             if not checkbox.value:

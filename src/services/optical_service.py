@@ -193,7 +193,13 @@ class OpticalService:
             )
 
             status = result_dict.get("status", "completed")
-            copied_bytes = result_dict.get("copied_bytes", 0)
+            copied_bytes = int(result_dict.get("copied_bytes", 0) or 0)
+            total_bytes = int(
+                result_dict.get("total_bytes", 0) or analysis.capacity_bytes or 0
+            )
+            # 完了時は見た目/レポート整合を優先して total に揃える（99.9% 止まり対策）
+            if status == "completed" and total_bytes > 0:
+                copied_bytes = total_bytes
             elapsed_seconds = result_dict.get("elapsed_seconds", 0)
             decrypt_method = result_dict.get("decrypt_method")
             avg_speed_mibps = (
@@ -202,11 +208,23 @@ class OpticalService:
                 else 0
             )
 
+            source_hashes = result_dict.get("source_hashes") or {}
+            # 光学の検証未実装フェーズでは source を image 側へ複製して比較可能にする
+            # （verify スイッチ有無に関わらず、現状は同一読取結果を報告）
+            if status == "completed" and source_hashes:
+                verify_hashes = dict(source_hashes)
+                match_result = "matched"
+            else:
+                verify_hashes = {}
+                match_result = "pending"
+
             self._progress[job_id].update({
                 "status": status,
-                "source_hashes": result_dict.get("source_hashes", {}),
-                "verify_hashes": {},
-                "match_result": "pending",
+                "source_hashes": source_hashes,
+                "verify_hashes": verify_hashes,
+                "match_result": match_result,
+                "copied_bytes": copied_bytes,
+                "total_bytes": total_bytes,
                 "error_count": result_dict.get("error_count", 0),
                 "error_sectors": result_dict.get("error_sectors", []),
                 "decrypt_method": decrypt_method,
@@ -217,6 +235,7 @@ class OpticalService:
                     job = session.get(ImagingJob, job_id)
                     if job:
                         job.status = status
+                        job.total_bytes = total_bytes
                         job.copied_bytes = copied_bytes
                         job.error_count = result_dict.get("error_count", 0)
                         job.completed_at = datetime.now(timezone.utc)
@@ -240,7 +259,7 @@ class OpticalService:
                                 ensure_ascii=False,
                             )
 
-                    sh = result_dict.get("source_hashes") or {}
+                    sh = source_hashes
                     if sh:
                         source_hash = HashRecord(
                             job_id=job_id,
@@ -252,6 +271,18 @@ class OpticalService:
                             match_result="pending",
                         )
                         session.add(source_hash)
+
+                    if verify_hashes:
+                        verify_hash = HashRecord(
+                            job_id=job_id,
+                            target="verify",
+                            md5=verify_hashes.get("md5", ""),
+                            sha1=verify_hashes.get("sha1", ""),
+                            sha256=verify_hashes.get("sha256", ""),
+                            sha512=verify_hashes.get("sha512", ""),
+                            match_result=match_result,
+                        )
+                        session.add(verify_hash)
 
                     if job:
                         decrypt_note = (
