@@ -30,6 +30,14 @@ libs/**/*.exe
 libs/*.dll
 libs/*.exe
 
+# ewftools / MSVC ビルド成果物（実行に不要・リポジトリ肥大化の原因）
+libs/**/*.lib
+libs/**/*.pdb
+libs/**/*.ilk
+libs/**/*.exp
+libs/**/*.zip
+libs/**/*.lastcodeanalysissucceeded
+
 # IDE
 .vscode/
 .idea/
