@@ -11,6 +11,7 @@
 | [`test_reference_hashes.json.example`](test_reference_hashes.json.example) | リファレンスハッシュ記録のテンプレート |
 | [`test_environment_template.md`](test_environment_template.md) | テスト PC・USB・ツールバージョンの記録テンプレート |
 | [`e01_test_results_TEMPLATE.md`](e01_test_results_TEMPLATE.md) | テストケース別結果の記録テンプレート |
+| [`e01_test_results_20260331.md`](e01_test_results_20260331.md) | v2.1.0 実機テスト記録（2026-03-31） |
 
 実結果は `e01_test_results_YYYYMMDD.md` などの名前でコピーして利用してください。
 

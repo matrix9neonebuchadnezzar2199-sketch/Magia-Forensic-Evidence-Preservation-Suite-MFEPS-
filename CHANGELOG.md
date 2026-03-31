@@ -45,6 +45,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `report_service.py`: 空ハッシュ行をスキップ、鑑識者未記入時「未記入」表示
 - `legal_consent_dialog.py`: NiceGUI 3.9 の `on_change=` コンストラクタ方式に変更
 - ewftools ビルドアーティファクト 59 ファイルを `.gitignore` に追加・`git rm --cached`
+- README.md を v2.1.0 に全面更新: タイトル・E01 ハッシュ説明（SHA-1 不使用注記）・実機テスト結果・libewf 既知制限・ewftools 入手元・E01 環境変数・ER 図の BigInteger 反映・テスト件数
+- `tests/integration/e01_test_results_20260331.md` を実機テスト結果で記入
 
 ### Removed
 - E01 出力における SHA-1 ハッシュ（libewf 20230405 が外部出力しないため全面除去、MD5 + SHA-256 の 2 系に統一）

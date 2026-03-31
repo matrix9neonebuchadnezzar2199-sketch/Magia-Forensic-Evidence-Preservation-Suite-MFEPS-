@@ -6,16 +6,20 @@ MFEPS で E01 形式の証拠保全を行うには、libewf の `ewfacquire.exe`
 
 ## 入手方法
 
-### 方法 1: ビルド済みバイナリ
+### 推奨（Windows・実機検証）
+
+- **[alpine-sec/ewf-tools](https://github.com/alpine-sec/ewf-tools/releases)**（例: v20230405-2）— MFEPS v2.1.0 の E01 実機テストで使用したビルド
+
+### その他: ビルド済みバイナリ
 
 - https://github.com/libyal/libewf/releases から Windows ビルドを取得
 - または libewf-legacy: https://github.com/libyal/libewf-legacy
 
-### 方法 2: SIFT Workstation / Kali Linux からコピー
+### SIFT Workstation / Kali Linux からコピー
 
 - 既にインストールされた環境から `ewfacquire`, `ewfverify` をコピー
 
-### 方法 3: 自前ビルド (MSVC)
+### 自前ビルド (MSVC)
 
 - https://github.com/libyal/libewf/wiki/Building の手順に従う
 
