@@ -380,6 +380,14 @@ MFEPS が依存する外部ライブラリのライセンス情報は [THIRD_PAR
 
 ---
 
+<div align="center">
+
+**MFEPS v2.1.0** _Forensic Evidence Preservation, Reimagined._
+
+</div>
+
+---
+
 <a id="english"></a>
 
 <!-- ============================================================ -->
@@ -583,6 +591,6 @@ For third-party license details, see [THIRD_PARTY_LICENSES.md](./THIRD_PARTY_LIC
 
 <div align="center">
 
-**🔬 MFEPS v2.0** — *Forensic Evidence Preservation, Reimagined.*
+**MFEPS v2.1.0** _Forensic Evidence Preservation, Reimagined._
 
 </div>
