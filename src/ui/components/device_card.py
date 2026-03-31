@@ -1,5 +1,5 @@
 """
-MFEPS v2.0 — デバイスカード UIコンポーネント
+MFEPS v2.1.0 — デバイスカード UIコンポーネント
 サイドバー内に表示するデバイス情報カード
 """
 from nicegui import ui

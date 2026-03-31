@@ -1,5 +1,5 @@
 """
-MFEPS v2.0 — SQLite データベース接続・初期化
+MFEPS v2.1.0 — SQLite データベース接続・初期化
 WALモード, 自動テーブル生成
 """
 import logging

@@ -1,5 +1,5 @@
 """
-MFEPS v2.0 — 設定管理
+MFEPS v2.1.0 — 設定管理
 .env ファイルからの読込 + Pydantic バリデーション
 """
 import os

@@ -1,5 +1,5 @@
 """
-MFEPS v2.0 — 定数定義
+MFEPS v2.1.0 — 定数定義
 """
 import re
 

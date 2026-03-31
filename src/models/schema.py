@@ -1,5 +1,5 @@
 """
-MFEPS v2.0 — SQLAlchemy ORM モデル定義
+MFEPS v2.1.0 — SQLAlchemy ORM モデル定義
 8テーブル: users, cases, evidence_items, imaging_jobs, hash_records,
 chain_of_custody, audit_log, app_settings
 """
@@ -108,7 +108,7 @@ class ImagingJob(Base):
 
     # E01 (ewfacquire) — Phase 1
     e01_compression = Column(String(40), default="")
-    e01_segment_size_bytes = Column(Integer, default=0)
+    e01_segment_size_bytes = Column(BigInteger, default=0)
     e01_ewf_format = Column(String(20), default="")
     e01_examiner_name = Column(String(200), default="")
     e01_notes = Column(Text, default="")

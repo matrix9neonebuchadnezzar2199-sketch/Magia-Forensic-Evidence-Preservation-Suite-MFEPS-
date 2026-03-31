@@ -1,5 +1,5 @@
 """
-MFEPS v2.0 — E01 出力ラッパー (ewfacquire / ewfverify subprocess)
+MFEPS v2.1.0 — E01 出力ラッパー (ewfacquire / ewfverify subprocess)
 
 libewf の ewfacquire.exe を subprocess で制御し、
 E01 (Expert Witness Compression Format) でのイメージ取得を行う。

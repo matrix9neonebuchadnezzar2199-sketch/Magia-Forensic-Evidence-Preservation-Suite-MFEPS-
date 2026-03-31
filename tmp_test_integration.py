@@ -13,7 +13,7 @@ from src.services.coc_service import CoCService
 from src.utils.config import get_config
 
 async def main():
-    print("=== MFEPS v2.0 統合テスト ===")
+    print("=== MFEPS v2.1.0 統合テスト ===")
     
     # DB初期化
     config = get_config()

@@ -1,5 +1,5 @@
 """
-MFEPS v2.0 — Enum 定義
+MFEPS v2.1.0 — Enum 定義
 """
 from enum import Enum
 

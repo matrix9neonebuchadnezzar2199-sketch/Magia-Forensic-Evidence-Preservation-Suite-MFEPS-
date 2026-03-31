@@ -1,5 +1,5 @@
 """
-MFEPS v2.0 — 案件管理 / 証拠品管理サービス
+MFEPS v2.1.0 — 案件管理 / 証拠品管理サービス
 """
 import logging
 import uuid

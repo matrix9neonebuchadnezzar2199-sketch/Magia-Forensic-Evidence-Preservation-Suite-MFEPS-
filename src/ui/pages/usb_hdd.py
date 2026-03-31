@@ -1,5 +1,5 @@
 """
-MFEPS v2.0 — USB/HDD ウィザードページ
+MFEPS v2.1.0 — USB/HDD ウィザードページ
 4段階ウィザード: ドライブ選択 → プリスキャン → コピー実行 → リザルト
 """
 import asyncio

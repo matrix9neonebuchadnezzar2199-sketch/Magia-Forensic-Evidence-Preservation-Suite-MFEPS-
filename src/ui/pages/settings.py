@@ -1,5 +1,5 @@
 """
-MFEPS v2.0 — 設定ダイアログ
+MFEPS v2.1.0 — 設定ダイアログ
 フォントサイズ、バッファ、RFC3161、テーマ等の設定
 """
 from pathlib import Path

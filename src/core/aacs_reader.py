@@ -6,7 +6,7 @@
 # with the MIT License.
 
 """
-MFEPS v2.0 — libaacs 復号リーダー（ctypes）
+MFEPS v2.1.0 — libaacs 復号リーダー（ctypes）
 AACS 暗号化 BD のセクタ単位復号読取
 
 keydb.cfg が無い、または DLL が無い場合は open が False を返し RAW にフォールバックする。

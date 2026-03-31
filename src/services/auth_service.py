@@ -1,5 +1,5 @@
 """
-MFEPS v2.0 — 認証サービス（bcrypt・ユーザー CRUD）
+MFEPS v2.1.0 — 認証サービス（bcrypt・ユーザー CRUD）
 """
 from __future__ import annotations
 

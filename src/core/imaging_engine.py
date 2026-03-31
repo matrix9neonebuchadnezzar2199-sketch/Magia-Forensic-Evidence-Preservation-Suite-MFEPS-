@@ -1,5 +1,5 @@
 """
-MFEPS v2.0 — Pure-Python ブロックデバイス イメージングエンジン
+MFEPS v2.1.0 — Pure-Python ブロックデバイス イメージングエンジン
 ctypes Win32 API 経由 RAW セクタ読取 + ダブルバッファ + トリプルハッシュ
 """
 import asyncio

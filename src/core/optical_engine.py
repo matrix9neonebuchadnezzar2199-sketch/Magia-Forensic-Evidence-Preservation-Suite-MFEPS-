@@ -1,5 +1,5 @@
 """
-MFEPS v2.0 — 光学メディア (CD/DVD/BD) イメージングエンジン
+MFEPS v2.1.0 — 光学メディア (CD/DVD/BD) イメージングエンジン
 TOC解析、メディア種別判定、CSS/AACS復号統合
 """
 import asyncio

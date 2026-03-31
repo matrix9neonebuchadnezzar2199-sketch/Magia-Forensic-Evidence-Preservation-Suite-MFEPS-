@@ -1,5 +1,5 @@
 """
-MFEPS v2.0 — プログレスバー / ハッシュ表示 / エラーパネル コンポーネント
+MFEPS v2.1.0 — プログレスバー / ハッシュ表示 / エラーパネル コンポーネント
 """
 from nicegui import ui
 from src.utils.constants import COLOR_SUCCESS, COLOR_ERROR, COLOR_WARNING

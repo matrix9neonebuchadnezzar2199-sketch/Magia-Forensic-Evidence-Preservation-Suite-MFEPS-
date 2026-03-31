@@ -1,5 +1,5 @@
 """
-MFEPS v2.0 — コピーガード解析エンジン
+MFEPS v2.1.0 — コピーガード解析エンジン
 CSS/AACS/リージョン/ARccOS/Disney X-Project/UOP/CCCD等の自動検出
 """
 import logging

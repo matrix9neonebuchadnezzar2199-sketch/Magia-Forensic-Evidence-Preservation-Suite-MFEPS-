@@ -1,5 +1,5 @@
 """
-MFEPS v2.0 — 光学メディア (CD/DVD/BD) ウィザードページ
+MFEPS v2.1.0 — 光学メディア (CD/DVD/BD) ウィザードページ
 4段階ウィザード + コピーガード解析結果表示
 """
 import asyncio

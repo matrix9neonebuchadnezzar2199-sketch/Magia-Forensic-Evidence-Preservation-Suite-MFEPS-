@@ -1,5 +1,5 @@
 """
-MFEPS v2.0 — フォルダ自動生成
+MFEPS v2.1.0 — フォルダ自動生成
 起動時に必要なディレクトリ構造を作成
 """
 from pathlib import Path

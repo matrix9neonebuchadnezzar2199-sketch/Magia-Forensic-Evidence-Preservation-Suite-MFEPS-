@@ -1,5 +1,5 @@
 """
-MFEPS v2.0 — ダッシュボード画面
+MFEPS v2.1.0 — ダッシュボード画面
 統計カード + 最近のジョブ一覧 + ディスク容量
 """
 from nicegui import ui, app

@@ -1,5 +1,5 @@
 """
-MFEPS v2.0 — メインレイアウト
+MFEPS v2.1.0 — メインレイアウト
 ヘッダー + 折り畳みサイドバー + メインコンテンツ + ステータスバー
 """
 from nicegui import ui, app

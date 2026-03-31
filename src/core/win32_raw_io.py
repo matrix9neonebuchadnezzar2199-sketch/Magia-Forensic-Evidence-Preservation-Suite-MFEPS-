@@ -1,5 +1,5 @@
 """
-MFEPS v2.0 — Win32 RAW I/O ラッパー
+MFEPS v2.1.0 — Win32 RAW I/O ラッパー
 ctypes 経由で Windows Kernel32 / DeviceIoControl を操作
 """
 import ctypes

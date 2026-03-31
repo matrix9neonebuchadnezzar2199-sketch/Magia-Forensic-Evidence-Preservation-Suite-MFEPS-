@@ -1,5 +1,5 @@
 """
-MFEPS v2.0 — 監査ログビューア画面
+MFEPS v2.1.0 — 監査ログビューア画面
 """
 from nicegui import ui
 from src.services.audit_service import get_audit_service

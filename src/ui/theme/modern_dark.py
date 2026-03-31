@@ -1,5 +1,5 @@
 """
-MFEPS v2.0 — モダンダークテーマ
+MFEPS v2.1.0 — モダンダークテーマ
 NiceGUI のカスタムCSS + Quasar 設定
 """
 from src.utils.constants import (

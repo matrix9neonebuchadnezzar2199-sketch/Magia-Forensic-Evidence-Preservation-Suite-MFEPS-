@@ -1,5 +1,5 @@
 """
-MFEPS v2.0 — 法的免責事項 同意モーダル
+MFEPS v2.1.0 — 法的免責事項 同意モーダル
 コピーガード解析機能の利用前に表示
 """
 from __future__ import annotations

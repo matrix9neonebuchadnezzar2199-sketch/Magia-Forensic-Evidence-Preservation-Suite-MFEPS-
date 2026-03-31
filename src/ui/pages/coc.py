@@ -1,5 +1,5 @@
 """
-MFEPS v2.0 — CoC (Chain of Custody) 管理画面
+MFEPS v2.1.0 — CoC (Chain of Custody) 管理画面
 """
 from nicegui import ui
 from src.services.coc_service import CoCService

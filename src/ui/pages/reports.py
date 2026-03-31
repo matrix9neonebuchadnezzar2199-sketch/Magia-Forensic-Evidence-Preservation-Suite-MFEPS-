@@ -1,5 +1,5 @@
 """
-MFEPS v2.0 — レポート画面
+MFEPS v2.1.0 — レポート画面
 報告書一覧 + 生成
 """
 from nicegui import ui

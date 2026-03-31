@@ -1,5 +1,5 @@
 """
-MFEPS v2.0 — E01Writer 単体テスト
+MFEPS v2.1.0 — E01Writer 単体テスト
 """
 import asyncio
 import re

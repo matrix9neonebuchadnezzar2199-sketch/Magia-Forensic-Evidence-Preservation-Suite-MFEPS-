@@ -1,5 +1,5 @@
 """
-MFEPS v2.0 — 報告書生成サービス (PDF / HTML)
+MFEPS v2.1.0 — 報告書生成サービス (PDF / HTML)
 Jinja2 テンプレート + ReportLab PDF
 """
 import logging

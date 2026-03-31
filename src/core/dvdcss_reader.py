@@ -6,7 +6,7 @@
 # MFEPS does not bundle or redistribute pydvdcss.
 
 """
-MFEPS v2.0 — pydvdcss 復号リーダー
+MFEPS v2.1.0 — pydvdcss 復号リーダー
 CSS 暗号化 DVD の論理ブロック（2048 バイト）単位の復号読取
 
 PyPI の pydvdcss（libdvdcss の ctypes ラッパー）の実 API:
