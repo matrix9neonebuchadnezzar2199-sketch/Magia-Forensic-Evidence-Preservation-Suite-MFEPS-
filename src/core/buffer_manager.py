@@ -72,6 +72,8 @@ class DoubleBufferManager:
                 data = await asyncio.get_running_loop().run_in_executor(
                     None, read_func, offset, read_size, buf,
                 )
+                if not data:
+                    break
 
                 # 実際に必要なバイト数にトリミング
                 actual_size = min(len(data), remaining)

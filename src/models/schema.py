@@ -70,7 +70,7 @@ class EvidenceItem(Base):
     media_type = Column(String(20))  # usb_hdd / cd / dvd / bd
     device_model = Column(String(200), default="")
     device_serial = Column(String(200), default="")
-    device_capacity_bytes = Column(Integer, default=0)
+    device_capacity_bytes = Column(BigInteger, default=0)
     description = Column(Text, default="")
     created_at = Column(DateTime, default=_utcnow)
 

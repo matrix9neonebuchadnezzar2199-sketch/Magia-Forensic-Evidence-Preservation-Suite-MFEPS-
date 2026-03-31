@@ -31,6 +31,7 @@ os.environ.setdefault("NICEGUI_STORAGE_PATH", str(_ng_storage_dir))
 from nicegui import ui, app
 
 from src.utils.config import get_config
+from src.utils.constants import APP_VERSION
 from src.utils.folder_manager import ensure_project_structure
 from src.utils.logger import setup_logging, get_logger
 from src.models.database import init_database
@@ -78,7 +79,7 @@ def main():
     setup_logging(config.logs_dir, config.mfeps_log_level)
     logger = get_logger("main")
     logger.info("=" * 60)
-    logger.info(f"MFEPS v2.0 起動開始")
+    logger.info(f"MFEPS v{APP_VERSION} 起動開始")
     logger.info(f"ベースディレクトリ: {config.base_dir}")
     logger.info("=" * 60)
 

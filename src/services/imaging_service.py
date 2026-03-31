@@ -524,6 +524,15 @@ class ImagingService:
                     job.completed_at = datetime.now(timezone.utc)
                     job.elapsed_seconds = result.elapsed_seconds
                     job.avg_speed_mbps = result.avg_speed_mibps
+                    if result.error_code or result.error_message:
+                        code = (result.error_code or "").strip()
+                        msg = (result.error_message or "").strip()
+                        if code and msg:
+                            job.notes = f"[{code}] {msg}"
+                        elif code:
+                            job.notes = f"[{code}]"
+                        elif msg:
+                            job.notes = msg
                     if result.output_path:
                         job.output_path = result.output_path
 
