@@ -163,13 +163,17 @@ class DvdCssReader:
 
         expected_len = sector_count * SECTOR_SIZE
         if len(data) < expected_len:
+            missing = expected_len - len(data)
             logger.warning(
-                "部分読取: LBA=%s requested_blocks=%s got_bytes=%s (expected %s)",
+                "部分読取: LBA=%s requested_blocks=%s got_bytes=%s (expected %s) "
+                "-> ゼロパディング %s bytes",
                 lba,
                 sector_count,
                 len(data),
                 expected_len,
+                missing,
             )
+            data = data + (b"\x00" * missing)
 
         return data
 

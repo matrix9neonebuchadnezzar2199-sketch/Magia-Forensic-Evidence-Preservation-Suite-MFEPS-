@@ -518,6 +518,19 @@ class OpticalImagingEngine:
                             error_sectors.append(current_lba)
 
                 if data:
+                    expected_chunk_len = chunk_size
+                    if len(data) < expected_chunk_len:
+                        missing_sectors = (
+                            expected_chunk_len - len(data) + sector_size - 1
+                        ) // sector_size
+                        if missing_sectors > 0:
+                            error_count += missing_sectors
+                            error_sectors.extend(
+                                range(
+                                    chunk_start_lba + chunk_sectors - missing_sectors,
+                                    chunk_start_lba + chunk_sectors,
+                                )
+                            )
                     hash_engine.update(data)
                     output_file.write(data)
                     copied_bytes += len(data)
