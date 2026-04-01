@@ -27,6 +27,11 @@ set "PYTHONPATH=%~dp0"
 set "DVDCSS_LIBRARY=%~dp0libs\libdvdcss-2.dll"
 set "PATH=%~dp0libs;%PATH%"
 
+REM libdvdcss 詳細ログ（DVD/CSS 診断時のみ。行頭の REM を外すと有効）
+REM set DVDCSS_VERBOSE=2
+REM 復号方式の試行（例: title）。通常は不要
+REM set DVDCSS_METHOD=title
+
 set "MFEPS_LOG=%TEMP%\mfeps_start.log"
 echo [%date% %time%] MFEPS start.bat :run> "%MFEPS_LOG%"
 echo CD=%CD%>> "%MFEPS_LOG%"

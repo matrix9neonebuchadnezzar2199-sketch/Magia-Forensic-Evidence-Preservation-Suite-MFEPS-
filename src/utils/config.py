@@ -56,6 +56,18 @@ class MFEPSConfig(BaseSettings):
             "ctypes / システム DLL 検索パスに依存"
         ),
     )
+    dvdcss_verbose: str = Field(
+        default="",
+        description=(
+            "libdvdcss ログ詳細度（0〜2）。空以外は起動時に DVDCSS_VERBOSE として os.environ に反映"
+        ),
+    )
+    dvdcss_method: str = Field(
+        default="",
+        description=(
+            "libdvdcss 復号方式（例: title）。空以外は起動時に DVDCSS_METHOD として os.environ に反映"
+        ),
+    )
 
     # AACS (Blu-ray)
     aacs_library: str = Field(

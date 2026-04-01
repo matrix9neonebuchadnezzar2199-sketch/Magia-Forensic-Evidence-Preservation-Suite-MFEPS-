@@ -73,6 +73,14 @@ def main():
     # 1. 設定読込
     config = get_config()
 
+    # libdvdcss は getenv するため、pydvdcss 初回ロード前に環境へ載せる
+    _dv = (config.dvdcss_verbose or "").strip()
+    if _dv:
+        os.environ["DVDCSS_VERBOSE"] = _dv
+    _dm = (config.dvdcss_method or "").strip()
+    if _dm:
+        os.environ["DVDCSS_METHOD"] = _dm
+
     # 2. フォルダ構造確保
     ensure_project_structure(config.base_dir)
 
