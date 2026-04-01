@@ -11,6 +11,7 @@ from typing import Optional, Callable
 
 from src.core.imaging_engine import ImagingEngine, ImagingJobParams, ImagingResult
 from src.core.device_detector import DeviceInfo
+from src.core.e01_writer import E01InfoResult
 from src.core.write_blocker import check_write_protection
 from src.models.database import session_scope
 from src.models.enums import OutputFormat
@@ -74,6 +75,7 @@ class ImagingService:
         self._tasks: dict[str, asyncio.Task] = {}
         self._results: dict[str, dict] = {}
         self._job_actors: dict[str, str] = {}
+        self._e01_info_cache: dict[str, E01InfoResult] = {}
 
 
     async def start_imaging(
@@ -441,6 +443,34 @@ class ImagingService:
                         ),
                     )
 
+            if e01_result.success and e01_result.output_files:
+                e01_first = e01_result.output_files[0]
+                if len(e01_first) > 240:
+                    logger.warning(
+                        "ewfinfo をスキップ: パスが長すぎます (%s)",
+                        e01_first[:120],
+                    )
+                else:
+                    try:
+                        info_result = await writer.info(e01_first)
+                        if info_result.success:
+                            self._e01_info_cache[job_id] = info_result
+                            payload = json.dumps(
+                                {
+                                    "type": "ewfinfo",
+                                    "sections": info_result.sections,
+                                    "raw_excerpt": info_result.raw_output[:8000],
+                                },
+                                ensure_ascii=False,
+                            )
+                            with session_scope() as session:
+                                j = session.get(ImagingJob, job_id)
+                                if j:
+                                    prev = (j.notes or "").strip()
+                                    j.notes = (prev + "\n" + payload) if prev else payload
+                    except Exception as ex:
+                        logger.warning("ewfinfo 取得失敗: %s", ex)
+
             if e01_result.error_code == "E3006":
                 status = "cancelled"
             elif e01_result.success:
@@ -613,6 +643,41 @@ class ImagingService:
             "output_path": result.output_path,
             "error_message": result.error_message or "",
         }
+
+    def get_e01_info(self, job_id: str) -> Optional[E01InfoResult]:
+        """ewfinfo パース結果（メモリキャッシュまたは job.notes の JSON）。"""
+        cached = self._e01_info_cache.get(job_id)
+        if cached is not None:
+            return cached
+        try:
+            with session_scope() as session:
+                job = session.get(ImagingJob, job_id)
+                if not job or not (job.notes or "").strip():
+                    return None
+                for line in reversed((job.notes or "").split("\n")):
+                    line = line.strip()
+                    if not line.startswith("{"):
+                        continue
+                    try:
+                        obj = json.loads(line)
+                    except json.JSONDecodeError:
+                        continue
+                    if obj.get("type") != "ewfinfo" or "sections" not in obj:
+                        continue
+                    raw_ex = obj.get("raw_excerpt") or ""
+                    r = E01InfoResult(
+                        success=True,
+                        sections=obj.get("sections") or {},
+                        raw_output=raw_ex,
+                    )
+                    ln0 = raw_ex.splitlines()[0] if raw_ex else ""
+                    if ln0.strip().lower().startswith("ewfinfo"):
+                        r.ewfinfo_version = ln0.replace("ewfinfo", "", 1).strip()
+                    self._e01_info_cache[job_id] = r
+                    return r
+        except Exception as ex:
+            logger.warning("get_e01_info 失敗: %s", ex)
+        return None
 
     def get_progress(self, job_id: str) -> dict:
         """実行中ジョブの進捗を取得"""

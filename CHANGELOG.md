@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [2.1.0] - 2026-03-31
 
+### Added (Sprint C)
+
+- **ewfinfo 連携**: E01 取得後に `ewfinfo` を実行し、メタデータを `job.notes`（JSON）・UI・PDF/HTML 報告書に反映
+- `src/core/e01_writer.py`: `E01InfoResult`、`info()`、`_parse_ewfinfo_output()`
+- `src/utils/constants.py`: `EWFINFO_KV_PATTERN` / `EWFINFO_SECTION_PATTERN`
+- `config.py`: `resolve_ewfinfo_path()`（`libs/` および `ewftools-x64` 自動検出）
+- `tests/test_ewfinfo.py`（パーサー 6 件）、`tests/test_ewfinfo_integration.py`（`info()` モック 2 件）
+- `docs/pyewf_fallback_design.md`: Phase 3 での pyewf / ctypes フォールバック設計
+
 ### Added
 - **E01 出力**: ewfacquire subprocess による E01 (EWF) イメージ取得
 - `src/core/e01_writer.py`: E01Writer クラス（取得・検証・キャンセル）

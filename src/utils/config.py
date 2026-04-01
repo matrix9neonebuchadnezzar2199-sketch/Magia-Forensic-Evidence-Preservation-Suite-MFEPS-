@@ -75,6 +75,12 @@ class MFEPSConfig(BaseSettings):
             "ewfverify.exe のパス（空なら base_dir/libs/ewfverify.exe 等を自動検索）"
         ),
     )
+    ewfinfo_path: str = Field(
+        default="",
+        description=(
+            "ewfinfo.exe のパス（空なら base_dir/libs/ewfinfo.exe 等を自動検索）"
+        ),
+    )
     e01_segment_size_bytes: int = Field(
         default=1_500_000_000,
         ge=1_048_576,
@@ -174,6 +180,13 @@ class MFEPSConfig(BaseSettings):
     def resolve_ewfverify_path(self) -> str:
         """利用する ewfverify.exe の絶対パス（見つからなければ空文字）。"""
         for p in self._candidate_paths_for_tool(self.ewfverify_path, "ewfverify.exe"):
+            if p.is_file():
+                return str(p)
+        return ""
+
+    def resolve_ewfinfo_path(self) -> str:
+        """利用する ewfinfo.exe の絶対パス（見つからなければ空文字）。"""
+        for p in self._candidate_paths_for_tool(self.ewfinfo_path, "ewfinfo.exe"):
             if p.is_file():
                 return str(p)
         return ""

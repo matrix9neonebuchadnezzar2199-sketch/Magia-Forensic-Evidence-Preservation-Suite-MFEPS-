@@ -11,6 +11,7 @@ from typing import Optional
 
 from src.models.database import session_scope
 from src.models.schema import ImagingJob, HashRecord, Case, EvidenceItem
+from src.services.imaging_service import get_imaging_service
 from src.utils.config import get_config
 from src.utils.constants import APP_VERSION
 
@@ -237,6 +238,34 @@ class ReportService:
                 c.drawString(50, y, f"cmd: {cmd_txt}")
                 y -= 14
 
+                ewf = data.get("ewfinfo")
+                if ewf and ewf.get("success") and ewf.get("sections"):
+                    y -= 16
+                    if jp == "Helvetica":
+                        c.setFont("Helvetica-Bold", 12)
+                    else:
+                        c.setFont(jp, 12)
+                    c.drawString(30, y, "■ E01 メタデータ (ewfinfo)")
+                    y -= 16
+                    c.setFont(jp, 8)
+                    ver = (ewf.get("version") or "").strip()
+                    if ver:
+                        c.drawString(50, y, f"ewfinfo: {ver}")
+                        y -= 11
+                    for sec_name, kvs in ewf["sections"].items():
+                        c.drawString(50, y, f"[{sec_name}]")
+                        y -= 10
+                        for k, v in kvs.items():
+                            line = f"  {k}: {v}"
+                            if len(line) > 110:
+                                line = line[:107] + "..."
+                            c.drawString(50, y, line)
+                            y -= 9
+                            if y < 40:
+                                c.showPage()
+                                y = A4[1] - 40
+                                c.setFont(jp, 8)
+
             # 書き込み保護方式
             y -= 30
             if jp == "Helvetica":
@@ -392,7 +421,38 @@ th {{ background: #f0f0f0; }}
 <tr><th>実行コマンド</th><td><code style="word-break:break-all;">{data.get('e01_command_line', 'N/A')}</code></td></tr>
 </table>
 """
-        html += e01_section
+        ewfinfo_section = ""
+        ewf = data.get("ewfinfo")
+        if ewf and ewf.get("success") and ewf.get("sections"):
+            ver_html = ""
+            v = (ewf.get("version") or "").strip()
+            if v:
+                ver_html = f"<p><small>ewfinfo バージョン: {v}</small></p>"
+            rows = []
+            for sec_name, kvs in ewf["sections"].items():
+                rows.append(
+                    f"<tr><th colspan='2'>{sec_name}</th></tr>"
+                )
+                for k, val in kvs.items():
+                    esc_k = (
+                        str(k).replace("&", "&amp;")
+                        .replace("<", "&lt;").replace(">", "&gt;")
+                    )
+                    esc_v = (
+                        str(val).replace("&", "&amp;")
+                        .replace("<", "&lt;").replace(">", "&gt;")
+                    )
+                    rows.append(
+                        f"<tr><td>{esc_k}</td><td>{esc_v}</td></tr>"
+                    )
+            ewfinfo_section = (
+                "<h2>E01 メタデータ (ewfinfo)</h2>"
+                f"{ver_html}"
+                "<table>"
+                + "".join(rows)
+                + "</table>"
+            )
+        html += e01_section + ewfinfo_section
 
         wb_method = data.get("write_block_method", "none")
         wb_labels = {
@@ -472,7 +532,7 @@ th {{ background: #f0f0f0; }}
                     "sha512": getattr(hr, "sha512", None) or "",
                 }
 
-            return {
+            data = {
                 "case_number": case.case_number if case else "N/A",
                 "case_name": case.case_name if case else "N/A",
                 "examiner_name": _examiner_label(case),
@@ -504,3 +564,13 @@ th {{ background: #f0f0f0; }}
                 "e01_command_line": getattr(job, "e01_command_line", None) or "",
                 "capacity_notes": job.notes or "",
             }
+
+        info = get_imaging_service().get_e01_info(job_id)
+        data["ewfinfo"] = None
+        if info and info.success:
+            data["ewfinfo"] = {
+                "success": True,
+                "sections": info.sections,
+                "version": info.ewfinfo_version or "",
+            }
+        return data

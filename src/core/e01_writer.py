@@ -37,6 +37,8 @@ from src.utils.constants import (
     EWFVERIFY_STORED_HASH_PATTERN,
     EWFVERIFY_COMPUTED_HASH_PATTERN,
     EWFVERIFY_SUCCESS_PATTERN,
+    EWFINFO_KV_PATTERN,
+    EWFINFO_SECTION_PATTERN,
 )
 
 logger = logging.getLogger("mfeps.e01_writer")
@@ -107,6 +109,58 @@ class E01VerifyResult:
     error_message: str = ""
 
 
+@dataclass
+class E01InfoResult:
+    """ewfinfo のパース結果"""
+
+    success: bool = False
+    sections: dict[str, dict[str, str]] = field(default_factory=dict)
+    raw_output: str = ""
+    return_code: int = -1
+    error_message: str = ""
+    ewfinfo_version: str = ""
+
+    @property
+    def media_type(self) -> str:
+        return self.sections.get("Media information", {}).get("Media type", "")
+
+    @property
+    def media_size(self) -> str:
+        return self.sections.get("Media information", {}).get("Media size", "")
+
+    @property
+    def digest_md5(self) -> str:
+        return self.sections.get("Digest hash information", {}).get("MD5", "")
+
+    @property
+    def digest_sha256(self) -> str:
+        return self.sections.get("Digest hash information", {}).get("SHA256", "")
+
+    @property
+    def case_number(self) -> str:
+        return self.sections.get("Acquiry information", {}).get("Case number", "")
+
+    @property
+    def evidence_number(self) -> str:
+        return self.sections.get("Acquiry information", {}).get("Evidence number", "")
+
+    @property
+    def examiner_name(self) -> str:
+        return self.sections.get("Acquiry information", {}).get("Examiner name", "")
+
+    @property
+    def acquiry_date(self) -> str:
+        return self.sections.get("Acquiry information", {}).get("Acquiry date", "")
+
+    @property
+    def compression_method(self) -> str:
+        return self.sections.get("EWF information", {}).get("Compression method", "")
+
+    @property
+    def segments(self) -> str:
+        return self.sections.get("EWF information", {}).get("Number of segments", "")
+
+
 class E01Writer:
     """ewfacquire.exe を subprocess で呼び出し E01 イメージを生成する。"""
 
@@ -173,6 +227,20 @@ class E01Writer:
         except Exception:
             pass
         return get_config().resolve_ewfverify_path()
+
+    @staticmethod
+    def _resolve_ewfinfo_path() -> str:
+        """ewfinfo（storage 優先、その後設定 / 自動 libs 検索）"""
+        try:
+            from nicegui import app as nicegui_app
+
+            raw = (nicegui_app.storage.general.get("ewfinfo_path") or "").strip()
+            resolved = E01Writer._resolve_stored_tool_path(raw)
+            if resolved:
+                return resolved
+        except Exception:
+            pass
+        return get_config().resolve_ewfinfo_path()
 
     @staticmethod
     def check_available() -> dict:
@@ -516,6 +584,75 @@ class E01Writer:
             logger.error("ewfverify 実行エラー: %s", e, exc_info=True)
 
         return result
+
+    async def info(self, e01_path: str) -> E01InfoResult:
+        """指定 E01 ファイルに対して ewfinfo を実行し stdout をパースする。"""
+        result = E01InfoResult()
+        ewfinfo_path = E01Writer._resolve_ewfinfo_path()
+        if not ewfinfo_path or not Path(ewfinfo_path).is_file():
+            result.error_message = "ewfinfo.exe not found"
+            return result
+
+        if len(e01_path) > 240:
+            result.error_message = "path too long for ewfinfo (Windows)"
+            logger.warning("ewfinfo をスキップ: %s", result.error_message)
+            return result
+
+        cmd = [ewfinfo_path, e01_path]
+        try:
+            proc = await asyncio.create_subprocess_exec(
+                *cmd,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+                **self._subprocess_kwargs(),
+            )
+            stdout_bytes, stderr_bytes = await proc.communicate()
+            try:
+                if hasattr(proc, "_transport") and proc._transport is not None:
+                    proc._transport.close()
+            except Exception:
+                pass
+            result.return_code = proc.returncode if proc.returncode is not None else -1
+            result.raw_output = stdout_bytes.decode("utf-8", errors="replace")
+            if stderr_bytes:
+                result.raw_output += "\n" + stderr_bytes.decode("utf-8", errors="replace")
+
+            lines = result.raw_output.splitlines()
+            if lines and lines[0].strip().lower().startswith("ewfinfo"):
+                result.ewfinfo_version = lines[0].replace("ewfinfo", "", 1).strip()
+
+            if proc.returncode == 0:
+                result.success = True
+                result.sections = E01Writer._parse_ewfinfo_output(result.raw_output)
+            else:
+                result.error_message = (
+                    stderr_bytes.decode("utf-8", errors="replace").strip()
+                )
+        except Exception as e:
+            result.error_message = str(e)
+            logger.warning("ewfinfo 実行エラー: %s", e)
+
+        return result
+
+    @staticmethod
+    def _parse_ewfinfo_output(raw: str) -> dict[str, dict[str, str]]:
+        """ewfinfo stdout を {セクション名: {キー: 値}} にパースする。"""
+        sections: dict[str, dict[str, str]] = {}
+        current_section = "General"
+        for line in raw.splitlines():
+            line_stripped = line.strip()
+            section_match = EWFINFO_SECTION_PATTERN.match(line_stripped)
+            if section_match:
+                current_section = section_match.group(1).strip()
+                sections.setdefault(current_section, {})
+                continue
+            kv_match = EWFINFO_KV_PATTERN.match(line)
+            if kv_match:
+                key = kv_match.group(1).strip()
+                value = kv_match.group(2).strip()
+                sections.setdefault(current_section, {})
+                sections[current_section][key] = value
+        return sections
 
     async def cancel(self) -> None:
         self._cancel_requested = True

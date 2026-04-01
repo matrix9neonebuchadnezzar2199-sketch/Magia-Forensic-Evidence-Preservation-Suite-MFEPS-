@@ -378,7 +378,30 @@ def build_usb_hdd_page():
                             render_hash_comparison(src_hashes, ver_hashes, res.get("match_result", "failed"))
                         elif src_hashes:
                             render_hash_display(src_hashes, "ソースハッシュ (検証スキップ)")
-                            
+
+                        jid = state.get("job_id")
+                        if jid:
+                            from src.services.imaging_service import get_imaging_service
+
+                            ewf = get_imaging_service().get_e01_info(jid)
+                            if ewf and ewf.success and ewf.sections:
+                                with ui.card().classes("w-full"):
+                                    ui.label("E01 メタデータ (ewfinfo)").classes(
+                                        "text-subtitle1"
+                                    )
+                                    if (ewf.ewfinfo_version or "").strip():
+                                        ui.label(
+                                            f"ewfinfo {ewf.ewfinfo_version}"
+                                        ).classes("text-caption text-grey-7")
+                                    for section_name, kvs in ewf.sections.items():
+                                        ui.label(section_name).classes(
+                                            "text-weight-bold q-mt-sm"
+                                        )
+                                        for k, v in kvs.items():
+                                            ui.label(f"  {k}: {v}").classes(
+                                                "text-caption"
+                                            )
+
                         # エラーセクタ
                         if res.get("error_count", 0) > 0:
                             sec = state["selected_device"].sector_size if state.get(

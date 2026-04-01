@@ -155,3 +155,7 @@ E01_REMAINING_PATTERN = re.compile(
     r"(\d+)\s+minute\(?s?\)?\s+and\s+"
     r"(\d+)\s+second"
 )
+
+# ewfinfo stdout（セクション見出し + キー: 値）
+EWFINFO_KV_PATTERN = re.compile(r"^\s*(.+?):\s+(.+)$")
+EWFINFO_SECTION_PATTERN = re.compile(r"^(\w[\w\s]+):\s*$")
