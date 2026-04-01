@@ -67,10 +67,19 @@ class DvdCssReader:
         self._is_scrambled: bool = False
         self._current_lba: int = 0
 
-    def open(self, drive_path: str) -> bool:
+    def open(
+        self,
+        drive_path: str,
+        *,
+        pydvdcss_open_path: Optional[str] = None,
+    ) -> bool:
         """
         DVD をオープンし、スクランブル状態を確認する。
         pydvdcss が未インストールの場合は ImportError を送出する。
+
+        ``pydvdcss_open_path``:
+            libdvdcss / pydvdcss が期待するパス（Windows では ``\"G:\"`` 形式が
+            ``\\\\.\\CdRom0`` より安定することがある）。未指定時は ``drive_path`` をそのまま使う。
         """
         try:
             from pydvdcss import DvdCss
@@ -81,8 +90,9 @@ class DvdCssReader:
             )
             raise
 
+        open_target = (pydvdcss_open_path or drive_path).strip()
         self._dvd = DvdCss()
-        handle = self._dvd.open(drive_path)
+        handle = self._dvd.open(open_target)
         if handle < 0:
             try:
                 self._dvd.dispose()
@@ -97,8 +107,9 @@ class DvdCssReader:
         self._is_scrambled = self._dvd.is_scrambled()
         self._current_lba = 0
         logger.info(
-            "DvdCssReader オープン: %s, scrambled=%s",
+            "DvdCssReader オープン: raw=%s open_target=%s scrambled=%s",
             drive_path,
+            open_target,
             self._is_scrambled,
         )
         return True

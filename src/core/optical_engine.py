@@ -7,6 +7,7 @@ import logging
 import os
 import threading
 import time
+from functools import partial
 from pathlib import Path
 from typing import Any, Callable, Optional
 
@@ -310,23 +311,27 @@ class OpticalImagingEngine:
         hash_sha1: bool = True,
         hash_sha256: bool = True,
         hash_sha512: bool = False,
+        pydvdcss_open_path: Optional[str] = None,
     ) -> dict:
         self._cancel_event.clear()
         self._pause_event.set()
         loop = asyncio.get_running_loop()
         return await loop.run_in_executor(
             None,
-            self._image_optical_sync,
-            drive_path,
-            output_path,
-            analysis,
-            use_pydvdcss,
-            use_aacs,
-            progress_callback,
-            hash_md5,
-            hash_sha1,
-            hash_sha256,
-            hash_sha512,
+            partial(
+                self._image_optical_sync,
+                drive_path,
+                output_path,
+                analysis,
+                use_pydvdcss,
+                use_aacs,
+                progress_callback,
+                hash_md5,
+                hash_sha1,
+                hash_sha256,
+                hash_sha512,
+                pydvdcss_open_path,
+            ),
         )
 
     def _image_optical_sync(
@@ -341,6 +346,7 @@ class OpticalImagingEngine:
         hash_sha1: bool = True,
         hash_sha256: bool = True,
         hash_sha512: bool = False,
+        pydvdcss_open_path: Optional[str] = None,
     ) -> dict:
         """
         光学メディアをイメージングする。
@@ -398,7 +404,10 @@ class OpticalImagingEngine:
                         from src.core.dvdcss_reader import DvdCssReader as _Dvd
 
                         css_reader = _Dvd()
-                        css_reader.open(drive_path)
+                        css_reader.open(
+                            drive_path,
+                            pydvdcss_open_path=pydvdcss_open_path,
+                        )
                         decrypt_pydvdcss = True
                         decrypt_method = "pydvdcss"
                         css_scrambled_snapshot = css_reader.is_scrambled

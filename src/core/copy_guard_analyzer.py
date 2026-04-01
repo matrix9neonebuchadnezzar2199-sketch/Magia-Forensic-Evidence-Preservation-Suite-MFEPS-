@@ -36,13 +36,22 @@ class CopyGuardResult(BaseModel):
 class CopyGuardAnalyzer:
     """光学メディアのコピーガード自動検出"""
 
-    def analyze(self, drive_path: str,
-                media_info: OpticalAnalysisResult) -> CopyGuardResult:
+    def analyze(
+        self,
+        drive_path: str,
+        media_info: OpticalAnalysisResult,
+        *,
+        pydvdcss_open_path: Optional[str] = None,
+    ) -> CopyGuardResult:
         """コピーガードを総合分析"""
         results = []
 
         if media_info.media_type in ("DVD-Video", "DVD-Data"):
-            results.extend(self._check_dvd_protections(drive_path, media_info))
+            results.extend(
+                self._check_dvd_protections(
+                    drive_path, media_info, pydvdcss_open_path=pydvdcss_open_path
+                )
+            )
         elif media_info.media_type in ("BD-Video", "BD-Data"):
             results.extend(self._check_bd_protections(drive_path, media_info))
         elif media_info.media_type in ("CD-ROM", "CD-DA"):
@@ -65,13 +74,20 @@ class CopyGuardAnalyzer:
             recommended_action=recommended,
         )
 
-    def _check_dvd_protections(self, drive_path: str,
-                                info: OpticalAnalysisResult) -> list[ProtectionInfo]:
+    def _check_dvd_protections(
+        self,
+        drive_path: str,
+        info: OpticalAnalysisResult,
+        *,
+        pydvdcss_open_path: Optional[str] = None,
+    ) -> list[ProtectionInfo]:
         """DVD保護検出"""
         results = []
 
         # 1. CSS (Content Scramble System)
-        css_result = self._check_css(drive_path)
+        css_result = self._check_css(
+            drive_path, pydvdcss_open_path=pydvdcss_open_path
+        )
         results.append(css_result)
 
         # 2. リージョンコード
@@ -124,14 +140,22 @@ class CopyGuardAnalyzer:
 
     # ----- 個別検出メソッド -----
 
-    def _check_css(self, drive_path: str) -> ProtectionInfo:
+    def _check_css(
+        self,
+        drive_path: str,
+        *,
+        pydvdcss_open_path: Optional[str] = None,
+    ) -> ProtectionInfo:
         """CSS暗号化検出（pydvdcss は dvdcss_reader 経由のみ）"""
         try:
             from src.core.dvdcss_reader import DvdCssReader
 
             reader = DvdCssReader()
             try:
-                reader.open(drive_path)
+                reader.open(
+                    drive_path,
+                    pydvdcss_open_path=pydvdcss_open_path,
+                )
                 scrambled = reader.is_scrambled
             finally:
                 reader.close()

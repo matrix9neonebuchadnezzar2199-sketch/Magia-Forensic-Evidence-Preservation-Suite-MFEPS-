@@ -88,13 +88,22 @@ def build_optical_page():
                         
                     analyzer = OpticalMediaAnalyzer()
                     drive_path = state["selected_drive"].device_path
+                    pydvdcss_open = (
+                        (state["selected_drive"].drive_letter or "").strip() or None
+                    )
                     analysis = await asyncio.get_running_loop().run_in_executor(
                         None, analyzer.analyze, drive_path)
                     state["analysis"] = analysis
                     
                     guard_analyzer = CopyGuardAnalyzer()
                     guard_result = await asyncio.get_running_loop().run_in_executor(
-                        None, guard_analyzer.analyze, drive_path, analysis)
+                        None,
+                        lambda: guard_analyzer.analyze(
+                            drive_path,
+                            analysis,
+                            pydvdcss_open_path=pydvdcss_open,
+                        ),
+                    )
                     state["guard_result"] = guard_result
                     
                     scan_container.clear()
@@ -185,6 +194,10 @@ def build_optical_page():
                         hash_sha1=g.get("hash_sha1", True),
                         hash_sha256=g.get("hash_sha256", True),
                         hash_sha512=g.get("hash_sha512", False),
+                        pydvdcss_open_path=(
+                            (state["selected_drive"].drive_letter or "").strip()
+                            or None
+                        ),
                     )
                     state["job_id"] = job_id
                     

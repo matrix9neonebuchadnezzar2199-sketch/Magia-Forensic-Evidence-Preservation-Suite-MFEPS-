@@ -50,7 +50,12 @@ class MFEPSConfig(BaseSettings):
 
     # DLL
     dvdcss_library: str = Field(
-        default="./libs/libdvdcss-2.dll", description="libdvdcss DLL パス")
+        default="./libs/libdvdcss-2.dll",
+        description=(
+            "参考: libdvdcss DLL の配置メモ（.env からは pydvdcss が直接参照しない）。"
+            "ctypes / システム DLL 検索パスに依存"
+        ),
+    )
 
     # AACS (Blu-ray)
     aacs_library: str = Field(

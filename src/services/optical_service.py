@@ -41,6 +41,7 @@ class OpticalService:
         hash_sha1: bool = True,
         hash_sha256: bool = True,
         hash_sha512: bool = False,
+        pydvdcss_open_path: Optional[str] = None,
     ) -> str:
         
         config = get_config()
@@ -149,6 +150,7 @@ class OpticalService:
                 hash_sha1=hash_sha1,
                 hash_sha256=hash_sha256,
                 hash_sha512=hash_sha512,
+                pydvdcss_open_path=pydvdcss_open_path,
             )
         )
         self._tasks[job_id] = task
@@ -171,6 +173,7 @@ class OpticalService:
         hash_sha1: bool = True,
         hash_sha256: bool = True,
         hash_sha512: bool = False,
+        pydvdcss_open_path: Optional[str] = None,
     ):
         actor_for_coc = self._job_actors.pop(job_id, "MFEPS Auto")
         start_time = datetime.now(timezone.utc)
@@ -190,6 +193,7 @@ class OpticalService:
                 hash_sha1=hash_sha1,
                 hash_sha256=hash_sha256,
                 hash_sha512=hash_sha512,
+                pydvdcss_open_path=pydvdcss_open_path,
             )
 
             status = result_dict.get("status", "completed")
