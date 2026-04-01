@@ -348,6 +348,11 @@ class OpticalImagingEngine:
         use_pydvdcss: DvdCssReader（CSS）。use_aacs: AacsReader（AACS）。
         いずれも初期化失敗時は RAW にフォールバック。
         """
+        try:
+            output_path = os.fspath(output_path)
+        except TypeError:
+            output_path = str(output_path)
+
         start_time = time.time()
         hash_engine = TripleHashEngine(
             md5=hash_md5,

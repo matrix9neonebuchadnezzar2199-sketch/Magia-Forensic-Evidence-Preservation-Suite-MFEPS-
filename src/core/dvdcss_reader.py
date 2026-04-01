@@ -20,7 +20,9 @@ PyPI の pydvdcss（libdvdcss の ctypes ラッパー）の実 API:
   NO_FLAGS       = 0
   READ_DECRYPT   = 1   read() 時: スクランブル復号
   SEEK_MPEG      = 1   seek() 時: MPEG/VOB シーク
-  SEEK_KEY       = 2   seek() 時: タイトルキー取得
+  SEEK_KEY       = 2   seek() 時: タイトルキー取得（VOB 境界向け。LBA=0 等では失敗しやすい）
+
+SEEK_KEY 失敗時は SEEK_MPEG にフォールバックする（IFO 未解析の暫定策）。
 """
 from __future__ import annotations
 
@@ -35,6 +37,17 @@ DVDCSS_NO_FLAGS = 0
 DVDCSS_READ_DECRYPT = 1
 DVDCSS_SEEK_MPEG = 1
 DVDCSS_SEEK_KEY = 2
+
+
+def _safe_pydvdcss_error(dvd: object) -> str:
+    """
+    pydvdcss.DvdCss.error() は dvdcss_error の戻り値に .rstrip() する実装のため、
+    ctypes が int を返すビルドでは AttributeError になる。メッセージ取得のみ安全に行う。
+    """
+    try:
+        return repr(dvd.error())
+    except Exception as e:
+        return f"<dvd.error() 取得失敗: {e!r}>"
 
 
 class DvdCssReader:
@@ -107,8 +120,8 @@ class DvdCssReader:
         """
         LBA 位置から指定ブロック数を復号読取する。
 
-        Phase 1 ではディスク先頭チャンクのみ ``is_title_start=True``（SEEK_KEY）。
-        将来的に VTS 境界テーブル解析で精密化可能。
+        ``is_title_start=True`` のときは SEEK_KEY を試すが、リードイン等では失敗し
+        うるため、失敗時は SEEK_MPEG にフォールバックする。IFO 境界の精密化は将来対応。
         """
         if self._dvd is None:
             raise RuntimeError("DvdCssReader が未オープンです")
@@ -117,11 +130,18 @@ class DvdCssReader:
         seek_flags = dvd.SEEK_KEY if is_title_start else dvd.SEEK_MPEG
 
         result_lba = dvd.seek(lba, seek_flags)
+        if result_lba < 0 and is_title_start:
+            logger.warning(
+                "pydvdcss SEEK_KEY 失敗、SEEK_MPEG でリトライ: LBA=%d",
+                lba,
+            )
+            seek_flags = dvd.SEEK_MPEG
+            result_lba = dvd.seek(lba, seek_flags)
+
         if result_lba < 0:
             raise OSError(
-                f"pydvdcss シーク失敗: LBA={lba}, "
-                f"flags={'SEEK_KEY' if is_title_start else 'SEEK_MPEG'}, "
-                f"error={dvd.error()!r}"
+                f"pydvdcss シーク失敗: LBA={lba}, flags={seek_flags}, "
+                f"error={_safe_pydvdcss_error(dvd)}"
             )
 
         read_flags = dvd.READ_DECRYPT if self._is_scrambled else dvd.NO_FLAGS
