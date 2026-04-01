@@ -234,12 +234,5 @@ def _parse_optical_json(data: dict, index: int) -> Optional[OpticalDriveInfo]:
         return None
 
 
-def format_capacity(bytes_val: int) -> str:
-    """バイト数を人間可読形式に変換"""
-    if bytes_val <= 0:
-        return "不明"
-    units = [("TB", 1024**4), ("GB", 1024**3), ("MB", 1024**2), ("KB", 1024)]
-    for unit, divisor in units:
-        if bytes_val >= divisor:
-            return f"{bytes_val / divisor:.2f} {unit}"
-    return f"{bytes_val} B"
+# 後方互換: format_capacity は src.utils.format_helpers へ移動済み
+from src.utils.format_helpers import format_capacity  # noqa: F401

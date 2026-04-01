@@ -3,7 +3,7 @@ MFEPS v2.1.0 — E01Writer 単体テスト
 """
 import asyncio
 import re
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 from src.core.e01_writer import E01Params, E01Writer
 from src.services.imaging_service import _parse_e01_remaining_to_seconds
@@ -122,6 +122,85 @@ class TestBuildCommand:
             cmd, _ = writer.build_command(params)
             assert "-w" not in cmd
             assert "-d" not in cmd
+
+    def test_empty_metadata_omits_optional_flags(self):
+        """未入力の case/evidence 等は ewfacquire に空文字で渡さずフラグごと省略する"""
+        with patch("src.core.e01_writer.get_config") as mock_cfg:
+            cfg = MagicMock()
+            cfg.ewfacquire_path = "ewfacquire"
+            cfg.resolve_ewfacquire_path = MagicMock(return_value="ewfacquire")
+            mock_cfg.return_value = cfg
+
+            writer = E01Writer()
+            params = E01Params(
+                source_path="/dev/sdb",
+                output_dir="/tmp",
+                output_basename="img",
+                case_number="",
+                evidence_number="",
+                examiner_name="",
+                description="",
+                notes="",
+                zero_on_error=False,
+                calculate_sha256=False,
+            )
+            cmd, _ = writer.build_command(params)
+            assert "-C" not in cmd
+            assert "-D" not in cmd
+            assert "-e" not in cmd
+            assert "-E" not in cmd
+            assert "-N" not in cmd
+
+
+class TestAcquireIncompleteFiles:
+    def test_incomplete_files_on_ewfacquire_failure(self, tmp_path):
+        """ewfacquire が非 0 終了したとき、出力先のセグメント・ログを列挙する"""
+        out_dir = tmp_path / "case"
+        out_dir.mkdir()
+        (out_dir / "image.E01").write_bytes(b"x")
+        (out_dir / "image_ewfacquire.log").write_text("log")
+
+        params = E01Params(
+            source_path=r"\\.\PhysicalDrive0",
+            output_dir=str(out_dir),
+            output_basename="image",
+        )
+
+        class _EmptyStream:
+            async def read(self, _n: int) -> bytes:
+                return b""
+
+        async def fake_subprocess(*_a, **_kw):
+            proc = MagicMock()
+            proc.stdout = _EmptyStream()
+            proc.stderr = _EmptyStream()
+            proc.wait = AsyncMock(return_value=7)
+            return proc
+
+        async def run_acquire():
+            with patch.object(
+                E01Writer,
+                "check_available",
+                return_value={
+                    "ewfacquire_available": True,
+                    "ewfverify_available": False,
+                    "ewfacquire_version": "test",
+                    "ewfverify_version": "",
+                },
+            ), patch(
+                "asyncio.create_subprocess_exec",
+                side_effect=fake_subprocess,
+            ):
+                writer = E01Writer()
+                return await writer.acquire(params)
+
+        result = asyncio.run(run_acquire())
+
+        assert result.success is False
+        assert result.error_code == "E7002"
+        names = " ".join(result.incomplete_files)
+        assert "image.E01" in names
+        assert "ewfacquire.log" in names
 
 
 class TestOutputParsing:

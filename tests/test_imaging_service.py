@@ -82,3 +82,51 @@ class TestOnImagingComplete:
         assert job is not None
         assert job.status == "completed"
         assert "[E" not in (job.notes or "")
+
+    def test_cancelled_job_records_incomplete_files_in_notes(self, imaging_db):
+        svc = ImagingService()
+        svc._job_actors["test-job-001"] = "Tester"
+
+        result = ImagingResult(
+            job_id="test-job-001",
+            status="cancelled",
+            incomplete_file_records=[
+                {
+                    "path": "C:/output/partial/image.dd",
+                    "size_bytes": 4096,
+                    "modified_at": "2026-04-01T12:00:00+00:00",
+                }
+            ],
+            incomplete_files=["C:/output/partial/image.dd"],
+            incomplete_total_bytes=4096,
+        )
+
+        asyncio.run(svc.on_imaging_complete(result))
+
+        session = get_session()
+        job = session.get(ImagingJob, "test-job-001")
+        assert job is not None
+        notes = job.notes or ""
+        assert "incomplete_files" in notes
+        assert "partial/image.dd" in notes
+        assert "cancelled" in notes
+
+    def test_completed_job_without_incomplete_skips_extra_note(self, imaging_db):
+        svc = ImagingService()
+        svc._job_actors["test-job-001"] = "Tester"
+
+        result = ImagingResult(
+            job_id="test-job-001",
+            status="completed",
+            source_hashes={"md5": "a" * 32},
+            total_bytes=1000,
+            copied_bytes=1000,
+            incomplete_file_records=[],
+        )
+
+        asyncio.run(svc.on_imaging_complete(result))
+
+        session = get_session()
+        job = session.get(ImagingJob, "test-job-001")
+        assert job is not None
+        assert "incomplete_files" not in (job.notes or "")

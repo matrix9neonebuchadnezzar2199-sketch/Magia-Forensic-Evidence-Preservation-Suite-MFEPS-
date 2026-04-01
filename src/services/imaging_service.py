@@ -19,6 +19,11 @@ from src.models.schema import ImagingJob, HashRecord, ChainOfCustody
 from src.utils.config import get_config
 from src.utils.constants import E01_REMAINING_PATTERN
 from src.utils.path_sanitize import sanitize_path_component
+from src.utils.storage_helpers import get_general_storage
+from src.utils.incomplete_file_reporting import (
+    append_incomplete_files_report,
+    incomplete_reason_from_job_status,
+)
 
 
 def _parse_e01_remaining_to_seconds(remaining_str: str) -> float:
@@ -104,6 +109,7 @@ class ImagingService:
         config = get_config()
         job_id = str(uuid.uuid4())
 
+        # CaseService は本モジュールと相互 import しうるため遅延 import（循環回避）
         from src.services.case_service import CaseService, EvidenceService
         case_svc = CaseService()
         ev_svc = EvidenceService()
@@ -144,13 +150,7 @@ class ImagingService:
                     "libs/ewfacquire.exe を配置するか、設定画面または .env の EWFACQUIRE_PATH を指定してください。"
                 )
 
-        _stored: dict = {}
-        try:
-            from nicegui import app as nicegui_app
-
-            _stored = nicegui_app.storage.general
-        except Exception:
-            pass
+        _stored = get_general_storage()
 
         out_name = "image.E01" if output_format == OutputFormat.E01.value else "image.dd"
         comp_str = ""
@@ -289,13 +289,7 @@ class ImagingService:
 
         writer.set_progress_callback(on_e01_progress)
 
-        _stored: dict = {}
-        try:
-            from nicegui import app as nicegui_app
-
-            _stored = nicegui_app.storage.general
-        except Exception:
-            pass
+        _stored = get_general_storage()
 
         default_comp = (
             f"{config.e01_compression_method}:{config.e01_compression_level}"
@@ -487,6 +481,7 @@ class ImagingService:
                     e01_result.elapsed_seconds * 1024 * 1024
                 )
 
+            # E01 / libewf はストリーム上 MD5・SHA-256 のみ。ImagingResult.sha1 は RAW 専用で空のまま。
             imaging_result = ImagingResult(
                 job_id=job_id,
                 status=status,
@@ -505,6 +500,9 @@ class ImagingService:
                 ),
                 error_code=e01_result.error_code or None,
                 error_message=e01_result.error_message or None,
+                incomplete_files=list(e01_result.incomplete_files),
+                incomplete_total_bytes=e01_result.incomplete_total_bytes,
+                incomplete_file_records=list(e01_result.incomplete_file_records),
             )
 
             await self.on_imaging_complete(imaging_result)
@@ -581,6 +579,14 @@ class ImagingService:
                     if result.output_path:
                         job.output_path = result.output_path
 
+                    if result.incomplete_file_records:
+                        job.notes = append_incomplete_files_report(
+                            result.job_id,
+                            incomplete_reason_from_job_status(result.status),
+                            result.incomplete_file_records,
+                            job.notes,
+                        )
+
                 if _hash_dict_has_values(result.source_hashes):
                     source_hash = HashRecord(
                         job_id=result.job_id,
@@ -642,6 +648,7 @@ class ImagingService:
             "avg_speed_mibps": result.avg_speed_mibps,
             "output_path": result.output_path,
             "error_message": result.error_message or "",
+            "incomplete_files": result.incomplete_file_records,
         }
 
     def get_e01_info(self, job_id: str) -> Optional[E01InfoResult]:

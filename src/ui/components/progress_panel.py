@@ -2,7 +2,12 @@
 MFEPS v2.1.0 — プログレスバー / ハッシュ表示 / エラーパネル コンポーネント
 """
 from nicegui import ui
-from src.utils.constants import COLOR_SUCCESS, COLOR_ERROR, COLOR_WARNING
+from src.utils.constants import (
+    COLOR_SUCCESS,
+    COLOR_ERROR,
+    COLOR_WARNING,
+    INCOMPLETE_FILE_ACCENT,
+)
 
 
 def render_progress_panel(progress: dict):
@@ -40,11 +45,41 @@ def render_progress_panel(progress: dict):
             ui.label(f"⚠ エラー: {errors}").classes(f"text-body2 {color_cls}")
 
 
+def render_incomplete_files_warning(incomplete_files: list[dict]) -> None:
+    """キャンセル・失敗時に出力先へ残った不完全ファイルを通知（削除は行わない）。"""
+    if not incomplete_files:
+        return
+    with ui.card().classes("q-pa-md full-width").style(
+        f"border-left: 4px solid {INCOMPLETE_FILE_ACCENT};"
+    ):
+        with ui.row().classes("items-center gap-2 q-mb-sm"):
+            ui.icon("warning_amber", color="warning", size="sm")
+            ui.label("不完全なファイルが残っています").classes(
+                "text-subtitle1 text-weight-bold"
+            )
+        for item in incomplete_files:
+            p = item.get("path", "")
+            sz = int(item.get("size_bytes") or 0)
+            mod = item.get("modified_at") or ""
+            with ui.column().classes("q-mb-xs"):
+                ui.label(p).classes("hash-mono text-body2")
+                meta_parts = [f"{sz:,} bytes"]
+                if mod:
+                    meta_parts.append(mod)
+                ui.label(" · ".join(meta_parts)).classes(
+                    "text-caption text-grey-6"
+                )
+        ui.label(
+            "これらのファイルは自動削除されません。"
+            "確認のうえ手動で削除してください。"
+        ).classes(f"text-body2 q-mt-sm text-weight-medium")
+
+
 def render_hash_display(hashes: dict, label: str = "ハッシュ値"):
     """トリプルハッシュ表示"""
     with ui.card().classes("q-pa-md full-width"):
         ui.label(label).classes("text-subtitle2 text-weight-bold q-mb-sm")
-        for algo in ["md5", "sha256", "sha512"]:
+        for algo in ["md5", "sha1", "sha256", "sha512"]:
             value = hashes.get(algo, "")
             if not value and algo == "sha512":
                 continue
@@ -58,7 +93,7 @@ def render_hash_comparison(source: dict, verify: dict, match_result: str):
     with ui.card().classes("q-pa-md full-width"):
         ui.label("🔍 トリプルハッシュ検証").classes("text-subtitle1 text-weight-bold q-mb-md")
 
-        for algo in ["md5", "sha256", "sha512"]:
+        for algo in ["md5", "sha1", "sha256", "sha512"]:
             src_val = source.get(algo, "").lower()
             ver_val = verify.get(algo, "").lower()
             if not src_val and not ver_val and algo == "sha512":

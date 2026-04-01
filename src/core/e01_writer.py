@@ -22,6 +22,8 @@ from pathlib import Path
 from typing import Callable, Optional
 
 from src.utils.config import get_config
+from src.utils.incomplete_file_detector import detect_incomplete_files
+from src.utils.storage_helpers import get_storage_value
 from src.utils.constants import (
     E01_DEFAULT_COMPRESSION_METHOD,
     E01_DEFAULT_COMPRESSION_LEVEL,
@@ -92,6 +94,9 @@ class E01Result:
     log_file_path: str = ""
     error_code: str = ""
     error_message: str = ""
+    incomplete_files: list[str] = field(default_factory=list)
+    incomplete_total_bytes: int = 0
+    incomplete_file_records: list[dict] = field(default_factory=list)
 
 
 @dataclass
@@ -203,43 +208,28 @@ class E01Writer:
     @staticmethod
     def _resolve_ewfacquire_path() -> str:
         """storage（実在時）> 設定 / 自動 libs 検索"""
-        try:
-            from nicegui import app as nicegui_app
-
-            raw = (nicegui_app.storage.general.get("ewfacquire_path") or "").strip()
-            resolved = E01Writer._resolve_stored_tool_path(raw)
-            if resolved:
-                return resolved
-        except Exception:
-            pass
+        raw = (get_storage_value("ewfacquire_path") or "").strip()
+        resolved = E01Writer._resolve_stored_tool_path(raw)
+        if resolved:
+            return resolved
         return get_config().resolve_ewfacquire_path()
 
     @staticmethod
     def _resolve_ewfverify_path() -> str:
         """ewfverify（storage 優先、その後設定 / 自動 libs 検索）"""
-        try:
-            from nicegui import app as nicegui_app
-
-            raw = (nicegui_app.storage.general.get("ewfverify_path") or "").strip()
-            resolved = E01Writer._resolve_stored_tool_path(raw)
-            if resolved:
-                return resolved
-        except Exception:
-            pass
+        raw = (get_storage_value("ewfverify_path") or "").strip()
+        resolved = E01Writer._resolve_stored_tool_path(raw)
+        if resolved:
+            return resolved
         return get_config().resolve_ewfverify_path()
 
     @staticmethod
     def _resolve_ewfinfo_path() -> str:
         """ewfinfo（storage 優先、その後設定 / 自動 libs 検索）"""
-        try:
-            from nicegui import app as nicegui_app
-
-            raw = (nicegui_app.storage.general.get("ewfinfo_path") or "").strip()
-            resolved = E01Writer._resolve_stored_tool_path(raw)
-            if resolved:
-                return resolved
-        except Exception:
-            pass
+        raw = (get_storage_value("ewfinfo_path") or "").strip()
+        resolved = E01Writer._resolve_stored_tool_path(raw)
+        if resolved:
+            return resolved
         return get_config().resolve_ewfinfo_path()
 
     @staticmethod
@@ -292,14 +282,8 @@ class E01Writer:
         base = E01Writer.check_available()
         diag: list[str] = []
 
-        try:
-            from nicegui import app as nicegui_app
-
-            stored_acq = (nicegui_app.storage.general.get("ewfacquire_path") or "").strip()
-            stored_ver = (nicegui_app.storage.general.get("ewfverify_path") or "").strip()
-        except Exception:
-            stored_acq = ""
-            stored_ver = ""
+        stored_acq = (get_storage_value("ewfacquire_path") or "").strip()
+        stored_ver = (get_storage_value("ewfverify_path") or "").strip()
 
         cfg_acq = (config.ewfacquire_path or "").strip()
         cfg_ver = (config.ewfverify_path or "").strip()
@@ -353,34 +337,38 @@ class E01Writer:
             ewfacquire_path,
             "-t",
             target_path,
-            "-C",
-            params.case_number or "",
-            "-D",
-            params.description or "",
-            "-e",
-            params.examiner_name or "",
-            "-E",
-            params.evidence_number or "",
-            "-N",
-            params.notes or "",
-            "-f",
-            params.ewf_format,
-            "-c",
-            compression_value,
-            "-S",
-            str(params.segment_size_bytes),
-            "-b",
-            str(params.sectors_per_chunk),
-            "-m",
-            params.media_type,
-            "-M",
-            params.media_flags,
-            "-r",
-            str(params.read_error_retries),
-            "-l",
-            log_path,
-            "-u",
         ]
+        if (params.case_number or "").strip():
+            cmd.extend(["-C", params.case_number.strip()])
+        if (params.description or "").strip():
+            cmd.extend(["-D", params.description.strip()])
+        if (params.examiner_name or "").strip():
+            cmd.extend(["-e", params.examiner_name.strip()])
+        if (params.evidence_number or "").strip():
+            cmd.extend(["-E", params.evidence_number.strip()])
+        if (params.notes or "").strip():
+            cmd.extend(["-N", params.notes.strip()])
+        cmd.extend(
+            [
+                "-f",
+                params.ewf_format,
+                "-c",
+                compression_value,
+                "-S",
+                str(params.segment_size_bytes),
+                "-b",
+                str(params.sectors_per_chunk),
+                "-m",
+                params.media_type,
+                "-M",
+                params.media_flags,
+                "-r",
+                str(params.read_error_retries),
+                "-l",
+                log_path,
+                "-u",
+            ]
+        )
 
         if params.zero_on_error:
             cmd.append("-w")
@@ -391,6 +379,21 @@ class E01Writer:
         cmd.append(params.source_path)
 
         return cmd, log_path
+
+    @staticmethod
+    def _attach_e01_incomplete_files(result: E01Result, params: E01Params) -> None:
+        """成功以外のとき、出力先に残ったセグメント・ログを列挙する（削除はしない）。"""
+        if result.success:
+            return
+        patterns = [
+            f"{params.output_basename}.E*",
+            f"{params.output_basename}.e*",
+            f"{params.output_basename}_ewfacquire.log",
+        ]
+        entries = detect_incomplete_files(params.output_dir, patterns)
+        result.incomplete_file_records = entries
+        result.incomplete_files = [e["path"] for e in entries]
+        result.incomplete_total_bytes = sum(e["size_bytes"] for e in entries)
 
     async def acquire(self, params: E01Params) -> E01Result:
         result = E01Result()
@@ -404,6 +407,7 @@ class E01Writer:
                 f"ewfacquire.exe が利用できません: {acq or '(未設定)'}"
             )
             logger.error(result.error_message)
+            E01Writer._attach_e01_incomplete_files(result, params)
             return result
 
         result.ewfacquire_version = availability["ewfacquire_version"]
@@ -516,6 +520,7 @@ class E01Writer:
             logger.error("E01 取得例外: %s", e, exc_info=True)
         finally:
             self._process = None
+            E01Writer._attach_e01_incomplete_files(result, params)
 
         return result
 

@@ -21,6 +21,7 @@ from src.core.win32_raw_io import (
     open_device, close_device, get_disk_geometry, get_disk_length, read_sectors,
 )
 from src.core.write_blocker import verify_write_block
+from src.utils.incomplete_file_detector import detect_incomplete_files
 
 logger = logging.getLogger("mfeps.imaging_engine")
 
@@ -61,6 +62,9 @@ class ImagingResult(BaseModel):
     error_code: Optional[str] = None
     error_message: Optional[str] = None
     output_path: str = ""
+    incomplete_files: list[str] = Field(default_factory=list)
+    incomplete_total_bytes: int = 0
+    incomplete_file_records: list[dict] = Field(default_factory=list)
 
 
 class ImagingEngine:
@@ -282,6 +286,16 @@ class ImagingEngine:
             logger.info(
                 f"イメージング終了: status={result.status}, "
                 f"time={elapsed:.1f}s, speed={result.avg_speed_mibps} MiB/s")
+
+            if result.status in ("cancelled", "failed"):
+                entries = detect_incomplete_files(
+                    str(Path(job.output_dir)), ["image.dd"]
+                )
+                result.incomplete_file_records = entries
+                result.incomplete_files = [e["path"] for e in entries]
+                result.incomplete_total_bytes = sum(
+                    e["size_bytes"] for e in entries
+                )
 
             # エラーマップ保存
             if result.error_sectors:

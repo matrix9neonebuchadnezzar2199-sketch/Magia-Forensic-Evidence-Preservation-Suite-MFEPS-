@@ -260,10 +260,22 @@ def build_optical_page():
                 
                 progress_container.clear()
                 with progress_container:
-                    from src.ui.components.progress_panel import render_progress_panel, render_hash_display
+                    from src.ui.components.progress_panel import (
+                        render_progress_panel,
+                        render_hash_display,
+                        render_hash_comparison,
+                    )
                     render_progress_panel(progress)
-                    if "source_hashes" in progress and progress["source_hashes"]:
-                        render_hash_display(progress["source_hashes"])
+                    src_h = progress.get("source_hashes") or {}
+                    ver_h = progress.get("verify_hashes") or {}
+                    if src_h and ver_h:
+                        render_hash_comparison(
+                            src_h,
+                            ver_h,
+                            progress.get("match_result", "pending"),
+                        )
+                    elif src_h:
+                        render_hash_display(src_h, "ソースハッシュ")
                         
                 if status in ["completed", "failed", "cancelled"]:
                     if "timer" in state and state["timer"]:
@@ -288,16 +300,47 @@ def build_optical_page():
                         ui.label("イメージングプロセスの結果レポート").classes("text-body1 q-mb-md")
                         
                         src_hashes = res.get("source_hashes", {})
-                        if src_hashes:
+                        ver_hashes = res.get("verify_hashes", {})
+                        if src_hashes and ver_hashes:
+                            from src.ui.components.progress_panel import render_hash_comparison
+
+                            render_hash_comparison(
+                                src_hashes,
+                                ver_hashes,
+                                res.get("match_result", "pending"),
+                            )
+                        elif src_hashes:
                             from src.ui.components.progress_panel import render_hash_display
-                            render_hash_display(src_hashes, "ソースハッシュ (検証スキップ)")
+
+                            render_hash_display(
+                                src_hashes,
+                                "ソースハッシュ (検証なしまたは保留)",
+                            )
                             
+                        inc_done = res.get("incomplete_files") or []
+                        if inc_done:
+                            from src.ui.components.progress_panel import (
+                                render_incomplete_files_warning,
+                            )
+
+                            render_incomplete_files_warning(inc_done)
+
                         if res.get("error_count", 0) > 0:
                             from src.ui.components.progress_panel import render_error_panel
                             errors = [{"lba": s} for s in res.get("error_sectors", [])]
                             render_error_panel(errors)
                     else:
-                        ui.label(f"ジョブが正常に完了しませんでした ({res.get('status', 'unknown')})").classes("text-body1 text-negative")
+                        ui.label(
+                            f"ジョブが正常に完了しませんでした "
+                            f"({res.get('status', 'unknown')})"
+                        ).classes("text-body1 text-negative")
+                        inc_bad = res.get("incomplete_files") or []
+                        if inc_bad:
+                            from src.ui.components.progress_panel import (
+                                render_incomplete_files_warning,
+                            )
+
+                            render_incomplete_files_warning(inc_bad)
 
             with ui.row().classes("gap-2 q-mt-lg"):
                 async def generate_pdf():

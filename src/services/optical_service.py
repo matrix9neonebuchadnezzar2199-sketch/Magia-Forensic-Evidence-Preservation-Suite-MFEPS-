@@ -4,14 +4,21 @@ import logging
 import time
 import uuid
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Optional
 
+from src.core.hash_engine import verify_image_hash
 from src.core.optical_engine import OpticalAnalysisResult, OpticalImagingEngine
 from src.core.write_blocker import check_write_protection
 from src.models.database import session_scope
 from src.models.schema import ChainOfCustody, HashRecord, ImagingJob
 from src.services.audit_service import get_audit_service
 from src.utils.config import get_config
+from src.utils.incomplete_file_detector import detect_incomplete_files
+from src.utils.incomplete_file_reporting import (
+    append_incomplete_files_report,
+    incomplete_reason_from_job_status,
+)
 from src.utils.path_sanitize import sanitize_path_component
 
 logger = logging.getLogger("mfeps.optical_service")
@@ -43,10 +50,15 @@ class OpticalService:
         hash_sha512: bool = False,
         pydvdcss_open_path: Optional[str] = None,
     ) -> str:
-        
+        """
+        光学ドライブからイメージ（ISO/RAW）を取得し、DB・進捗を更新する。
+
+        verify が True の場合、完了後に出力ファイルを再読取して source_hashes と照合する。
+        """
         config = get_config()
         job_id = str(uuid.uuid4())
 
+        # CaseService は本モジュールと相互 import しうるため遅延 import（循環回避）
         from src.services.case_service import CaseService, EvidenceService
         case_svc = CaseService()
         ev_svc = EvidenceService()
@@ -146,6 +158,7 @@ class OpticalService:
                 use_pydvdcss,
                 use_aacs,
                 progress_cb,
+                verify=verify,
                 hash_md5=hash_md5,
                 hash_sha1=hash_sha1,
                 hash_sha256=hash_sha256,
@@ -169,6 +182,7 @@ class OpticalService:
         use_aacs,
         progress_cb,
         *,
+        verify: bool = True,
         hash_md5: bool = True,
         hash_sha1: bool = True,
         hash_sha256: bool = True,
@@ -213,14 +227,68 @@ class OpticalService:
             )
 
             source_hashes = result_dict.get("source_hashes") or {}
-            # 光学の検証未実装フェーズでは source を image 側へ複製して比較可能にする
-            # （verify スイッチ有無に関わらず、現状は同一読取結果を報告）
-            if status == "completed" and source_hashes:
-                verify_hashes = dict(source_hashes)
-                match_result = "matched"
-            else:
+            verify_hashes: dict = {}
+            match_result = "pending"
+
+            if status == "completed" and source_hashes and verify:
+                self._progress[job_id]["status"] = "verifying"
+                loop = asyncio.get_running_loop()
+
+                def _do_verify() -> dict:
+                    return verify_image_hash(
+                        output_path,
+                        source_hashes,
+                        buffer_size=1 * 1024 * 1024,
+                        md5=hash_md5,
+                        sha1=hash_sha1,
+                        sha256=hash_sha256,
+                        sha512=hash_sha512,
+                    )
+
+                try:
+                    vres = await loop.run_in_executor(None, _do_verify)
+                    verify_hashes = dict(vres.get("computed") or {})
+                    match_result = (
+                        "matched" if vres.get("all_match") else "mismatched"
+                    )
+                    if not vres.get("all_match"):
+                        audit = get_audit_service()
+                        audit.add_entry(
+                            level="ERROR",
+                            category="hash",
+                            message=(
+                                f"光学イメージ検証: ハッシュ不一致 job={job_id}"
+                            ),
+                            detail=json.dumps(
+                                {
+                                    "job_id": job_id,
+                                    "expected": source_hashes,
+                                    "computed": verify_hashes,
+                                },
+                                ensure_ascii=False,
+                            ),
+                        )
+                except Exception as ver_e:
+                    logger.error("光学イメージ検証エラー: %s", ver_e, exc_info=True)
+                    verify_hashes = {}
+                    match_result = "pending"
+                    audit = get_audit_service()
+                    audit.add_entry(
+                        level="WARN",
+                        category="hash",
+                        message=f"光学イメージ検証失敗: {ver_e}",
+                        detail=json.dumps({"job_id": job_id}, ensure_ascii=False),
+                    )
+            elif status == "completed" and source_hashes and not verify:
                 verify_hashes = {}
                 match_result = "pending"
+
+            incomplete_records: list[dict] = []
+            if status in ("cancelled", "failed"):
+                incomplete_records = detect_incomplete_files(
+                    str(Path(output_path).parent),
+                    ["image.iso", "image.dd"],
+                )
 
             self._progress[job_id].update({
                 "status": status,
@@ -232,6 +300,7 @@ class OpticalService:
                 "error_count": result_dict.get("error_count", 0),
                 "error_sectors": result_dict.get("error_sectors", []),
                 "decrypt_method": decrypt_method,
+                "incomplete_files": incomplete_records,
             })
 
             try:
@@ -259,6 +328,14 @@ class OpticalService:
                             job.notes = existing_notes + "\n" + diag_line
                         else:
                             job.notes = diag_line
+
+                        if incomplete_records:
+                            job.notes = append_incomplete_files_report(
+                                job_id,
+                                incomplete_reason_from_job_status(status),
+                                incomplete_records,
+                                job.notes,
+                            )
 
                         if decrypt_method:
                             job.copy_guard_detail = json.dumps(

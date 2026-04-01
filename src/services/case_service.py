@@ -2,7 +2,6 @@
 MFEPS v2.1.0 — 案件管理 / 証拠品管理サービス
 """
 import logging
-import uuid
 from datetime import datetime, timezone
 from typing import Optional
 
@@ -22,13 +21,13 @@ class CaseService:
         try:
             with session_scope() as session:
                 case = Case(
-                    id=str(uuid.uuid4()),
                     case_number=case_number,
                     case_name=case_name,
                     examiner_name=examiner_name,
                     description=description,
                 )
                 session.add(case)
+                session.flush()
                 logger.info(f"案件作成: {case_number} - {case_name}")
                 return case.id
         except Exception as e:
@@ -44,7 +43,6 @@ class CaseService:
                     return case.id
 
                 case = Case(
-                    id=str(uuid.uuid4()),
                     case_number=case_number,
                     case_name=case_name or f"案件 {case_number}",
                 )
@@ -111,7 +109,6 @@ class EvidenceService:
         try:
             with session_scope() as session:
                 ev = EvidenceItem(
-                    id=str(uuid.uuid4()),
                     case_id=case_id,
                     evidence_number=evidence_number,
                     media_type=media_type,
@@ -121,6 +118,7 @@ class EvidenceService:
                     description=description,
                 )
                 session.add(ev)
+                session.flush()
                 logger.info(f"証拠品作成: {evidence_number}")
                 return ev.id
         except Exception as e:
@@ -139,7 +137,6 @@ class EvidenceService:
                     return ev.id
 
                 ev = EvidenceItem(
-                    id=str(uuid.uuid4()),
                     case_id=case_id,
                     evidence_number=evidence_number,
                     media_type=media_type,

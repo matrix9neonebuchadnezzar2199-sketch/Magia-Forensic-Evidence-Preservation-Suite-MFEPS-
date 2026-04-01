@@ -9,10 +9,15 @@ import uuid
 from nicegui import ui, app
 
 logger = logging.getLogger("mfeps.ui.usb_hdd")
-from src.core.device_detector import detect_block_devices, DeviceInfo, format_capacity
+from src.core.device_detector import detect_block_devices, DeviceInfo
+from src.utils.format_helpers import format_capacity
 from src.core.write_blocker import check_write_protection, get_protection_badge
 from src.ui.components.progress_panel import (
-    render_progress_panel, render_hash_comparison, render_error_panel, render_hash_display
+    render_progress_panel,
+    render_hash_comparison,
+    render_error_panel,
+    render_hash_display,
+    render_incomplete_files_warning,
 )
 from src.ui.layout import create_layout
 from src.services.imaging_service import get_imaging_service
@@ -402,7 +407,10 @@ def build_usb_hdd_page():
                                                 "text-caption"
                                             )
 
-                        # エラーセクタ
+                        inc = res.get("incomplete_files") or []
+                        if inc:
+                            render_incomplete_files_warning(inc)
+
                         if res.get("error_count", 0) > 0:
                             sec = state["selected_device"].sector_size if state.get(
                                 "selected_device"
@@ -412,7 +420,13 @@ def build_usb_hdd_page():
                                 sector_size=sec,
                             )
                     else:
-                        ui.label(f"ジョブが正常に完了しませんでした ({res.get('status', 'unknown')})").classes("text-body1 text-negative")
+                        ui.label(
+                            f"ジョブが正常に完了しませんでした "
+                            f"({res.get('status', 'unknown')})"
+                        ).classes("text-body1 text-negative")
+                        inc_fail = res.get("incomplete_files") or []
+                        if inc_fail:
+                            render_incomplete_files_warning(inc_fail)
 
             ui.label("結果はイメージングジョブ実行後に表示されます").classes(
                 "text-caption text-grey-6")
