@@ -12,6 +12,7 @@
 | [`test_environment_template.md`](test_environment_template.md) | テスト PC・USB・ツールバージョンの記録テンプレート |
 | [`e01_test_results_TEMPLATE.md`](e01_test_results_TEMPLATE.md) | テストケース別結果の記録テンプレート |
 | [`e01_test_results_20260331.md`](e01_test_results_20260331.md) | v2.1.0 実機テスト記録（2026-03-31） |
+| [`e01_regression_20260401.md`](e01_regression_20260401.md) | v2.1.1 実機回帰テスト手順・結果テンプレート（2026-04-01） |
 
 実結果は `e01_test_results_YYYYMMDD.md` などの名前でコピーして利用してください。
 

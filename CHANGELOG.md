@@ -5,16 +5,34 @@ All notable changes to MFEPS will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.1.1] - 2026-04-01
+
+### Added
+- **ewfinfo 連携 (Sprint C)**: E01 取得後に `ewfinfo` を自動実行し、メタデータを UI・PDF/HTML 報告書・`job.notes` (JSON) に反映
+- `E01InfoResult` データクラス、`info()` メソッド、`_parse_ewfinfo_output()` パーサー
+- `EWFINFO_KV_PATTERN` / `EWFINFO_SECTION_PATTERN` (constants.py)
+- `resolve_ewfinfo_path()` (config.py)
+- `tests/test_ewfinfo.py` (6 件)、`tests/test_ewfinfo_integration.py` (2 件)
+- `docs/pyewf_fallback_design.md`: Phase 3 pyewf / ctypes フォールバック設計書
+- **ETA 表示 (Sprint A)**: `E01_REMAINING_PATTERN` と `_parse_e01_remaining_to_seconds()` で E01 取得の残り時間を秒変換
+- **負のテスト (Sprint A)**: `tests/test_negative.py` (15 件) — キャンセル、ディスクフル、権限エラー、ewfacquire 未検出等
+- **光学容量診断 (Sprint B-1)**: `OpticalAnalysisResult` に `ioctl_length_bytes` / `toc_leadout_bytes` / `capacity_source` を追加
+- `tests/test_optical_capacity.py` (3 件)
+
+### Changed
+- `imaging_service.py`: `get_progress()` が `eta_seconds` を返すよう拡張
+- `imaging_service.py`: E01 取得成功後に `ewfinfo` を呼び出し `_e01_info_cache` に保存
+- `report_service.py`: PDF/HTML に ewfinfo メタデータセクション追加、光学容量差分表示追加
+- `optical_engine.py`: 容量選択を TOC リードアウト → IOCTL → TOC max_lba の優先順に変更
+- `optical_service.py`: `job.notes` に容量診断 JSON を追記
+- `e01_writer.py`: `verify()` 後に subprocess transport を明示的に close
+- `main.py`: ProactorEventLoop の `ConnectionResetError` を DEBUG に格下げ
+- `usb_hdd.py`: Step 4 結果画面に ewfinfo メタデータカード追加
+
+### Fixed
+- ewfverify 完了後の `ConnectionResetError` ログ汚染 (Sprint B-2)
+
 ## [2.1.0] - 2026-03-31
-
-### Added (Sprint C)
-
-- **ewfinfo 連携**: E01 取得後に `ewfinfo` を実行し、メタデータを `job.notes`（JSON）・UI・PDF/HTML 報告書に反映
-- `src/core/e01_writer.py`: `E01InfoResult`、`info()`、`_parse_ewfinfo_output()`
-- `src/utils/constants.py`: `EWFINFO_KV_PATTERN` / `EWFINFO_SECTION_PATTERN`
-- `config.py`: `resolve_ewfinfo_path()`（`libs/` および `ewftools-x64` 自動検出）
-- `tests/test_ewfinfo.py`（パーサー 6 件）、`tests/test_ewfinfo_integration.py`（`info()` モック 2 件）
-- `docs/pyewf_fallback_design.md`: Phase 3 での pyewf / ctypes フォールバック設計
 
 ### Added
 - **E01 出力**: ewfacquire subprocess による E01 (EWF) イメージ取得

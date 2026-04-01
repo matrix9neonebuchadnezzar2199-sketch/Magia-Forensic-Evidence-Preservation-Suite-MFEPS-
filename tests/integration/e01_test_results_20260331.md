@@ -6,7 +6,8 @@
 |------|-----|
 | 実行日 | 2026-03-31 |
 | MFEPS バージョン | v2.1.0 |
-| MFEPS コミット | `340481c` (main) |
+| MFEPS コミット | `340481c` (main、実施時点) |
+| 備考 | 本記録は 2026-03-31 実施時のコミットを保持。v2.1.1 リリースラインは `c0cfcbb` を参照 |
 | ewfacquire バージョン | ewfacquire 20230405 (alpine-sec/ewf-tools v20230405-2) |
 | ewfverify バージョン | ewfverify 20230405 |
 | OS | Windows 10/11 x64 |
