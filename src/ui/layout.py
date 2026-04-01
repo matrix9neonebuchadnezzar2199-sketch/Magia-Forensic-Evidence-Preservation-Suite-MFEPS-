@@ -3,6 +3,7 @@ MFEPS v2.1.0 — メインレイアウト
 ヘッダー + 折り畳みサイドバー + メインコンテンツ + ステータスバー
 """
 from nicegui import ui, app
+from src.utils.config import get_config
 from src.utils.constants import APP_TITLE, APP_VERSION, COLOR_PRIMARY
 from src.ui.theme.modern_dark import CUSTOM_CSS
 from src.ui.session_auth import require_auth, clear_session
@@ -21,6 +22,13 @@ def create_layout(content_builder):
 
     # ---------- カスタムCSS注入（ページレベル） ----------
     ui.add_head_html(f"<style>{CUSTOM_CSS}</style>")
+    cfg = get_config()
+    fs = int(app.storage.general.get("font_size", cfg.mfeps_font_size))
+    ui.add_head_html(
+        f"<style id=\"mfeps-font-persist\">"
+        f"html, body, .nicegui-content {{ font-size: {fs}px !important; }}"
+        f"</style>"
+    )
 
     # ---------- ヘッダー ----------
     with ui.header(elevated=True).classes("items-center justify-between q-px-md"):

@@ -4,20 +4,30 @@ MFEPS v2.1.0 — ダッシュボード画面
 """
 from nicegui import ui, app
 from src.utils.constants import (
-    COLOR_PRIMARY, COLOR_SUCCESS, COLOR_WARNING, COLOR_ERROR, COLOR_INFO
+    COLOR_PRIMARY,
+    COLOR_SUCCESS,
+    COLOR_WARNING,
+    COLOR_INFO,
 )
+from src.services.dashboard_service import get_dashboard_counts, get_recent_jobs
 
 
 def build_dashboard():
     """ダッシュボードを構築"""
     ui.label("🏠 ダッシュボード").classes("text-h5 text-weight-bold q-mb-md")
 
+    counts = get_dashboard_counts()
+    n_cases = str(counts["cases"])
+    n_ev = str(counts["evidence"])
+    n_img = str(counts["images"])
+    n_err = str(counts["errors"])
+
     # ---- 統計カード ----
     with ui.row().classes("gap-4 q-mb-lg full-width"):
-        _stat_card("📁", "総案件数", "0", COLOR_PRIMARY)
-        _stat_card("💾", "総証拠品数", "0", COLOR_INFO)
-        _stat_card("📀", "総イメージ数", "0", COLOR_SUCCESS)
-        _stat_card("⚠️", "総エラー数", "0", COLOR_WARNING)
+        _stat_card("📁", "総案件数", n_cases, COLOR_PRIMARY)
+        _stat_card("💾", "総証拠品数", n_ev, COLOR_INFO)
+        _stat_card("📀", "総イメージ数", n_img, COLOR_SUCCESS)
+        _stat_card("⚠️", "エラーセクタ合計", n_err, COLOR_WARNING)
 
     # ---- 最近のジョブ ----
     ui.label("最近のイメージングジョブ").classes("text-h6 q-mb-sm")
@@ -31,15 +41,26 @@ def build_dashboard():
         {"name": "duration", "label": "所要時間", "field": "duration", "align": "right"},
     ]
 
+    rows = get_recent_jobs(15)
     ui.table(
         columns=columns,
-        rows=[],
-        row_key="date",
+        rows=rows,
+        row_key="id",
     ).classes("full-width").props("flat bordered")
 
-    with ui.row().classes("q-mt-md items-center"):
-        ui.label("ジョブがありません。サイドバーからイメージングを開始してください。").classes(
-            "text-caption text-grey-6")
+    if not rows:
+        with ui.row().classes("q-mt-md items-center"):
+            ui.label(
+                "ジョブがありません。サイドバーからイメージングを開始してください。"
+            ).classes("text-caption text-grey-6")
+    admin_hint = ""
+    if not app.storage.general.get("is_admin", False):
+        admin_hint = (
+            " 管理者権限で起動していない場合、ブロックデバイスが検出されないことがあります。"
+        )
+    ui.label(
+        f"統計はデータベースを参照しています。{admin_hint}"
+    ).classes("text-caption text-grey-7 q-mt-sm")
 
     # ---- ディスク容量 ----
     ui.separator().classes("q-my-lg")

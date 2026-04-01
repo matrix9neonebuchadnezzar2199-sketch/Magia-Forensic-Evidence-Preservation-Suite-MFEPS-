@@ -32,6 +32,7 @@ os.environ.setdefault("NICEGUI_STORAGE_PATH", str(_ng_storage_dir))
 from nicegui import ui, app
 
 from src.utils.config import get_config
+from src.utils.user_settings import apply_user_settings_to_environ, merge_file_into_storage
 from src.utils.constants import APP_VERSION
 from src.utils.folder_manager import ensure_project_structure
 from src.utils.logger import setup_logging, get_logger
@@ -47,6 +48,7 @@ from src.ui.pages.optical import build_optical_page
 from src.ui.pages.reports import build_reports_page
 from src.ui.pages.coc import build_coc_page
 from src.ui.pages.audit import build_audit_page
+from src.ui.pages.hash_verify import build_hash_verify_page
 
 
 def is_admin() -> bool:
@@ -70,7 +72,9 @@ def _get_or_create_storage_secret(data_dir: Path) -> str:
 
 def main():
     """メインエントリーポイント"""
-    # 1. 設定読込
+    # 1. ユーザー保存設定を環境へ（get_config より前）
+    _data_dir = BASE_DIR / "data"
+    apply_user_settings_to_environ(_data_dir)
     config = get_config()
 
     # libdvdcss は getenv するため、pydvdcss 初回ロード前に環境へ載せる
@@ -135,6 +139,7 @@ def main():
 
     @app.on_startup
     async def on_startup():
+        merge_file_into_storage(app.storage.general, config.data_dir)
         app.storage.general["status_text"] = "準備完了"
         app.storage.general["disk_free"] = ""
         app.storage.general["is_admin"] = _admin
@@ -165,10 +170,7 @@ def main():
 
     @ui.page("/hash-verify")
     def page_hash_verify():
-        def content():
-            ui.label("🔑 ハッシュ検証").classes("text-h5 text-weight-bold q-mb-md")
-            ui.label("イメージングジョブからハッシュ検証を実行できます").classes("text-grey-6")
-        create_layout(content)
+        create_layout(build_hash_verify_page)
 
     @ui.page("/coc")
     def page_coc():

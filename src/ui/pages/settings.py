@@ -9,6 +9,7 @@ from nicegui import ui, app
 from src.core.e01_writer import E01Writer
 from src.models.enums import AuditCategory
 from src.utils.config import get_config, reload_config
+from src.utils.user_settings import persist_user_settings_from_storage
 from src.utils.constants import (
     BUFFER_SIZE_OPTIONS,
     COLOR_INFO,
@@ -594,6 +595,27 @@ def build_settings():
         ui.button("リセット", icon="restart_alt", on_click=on_reset_settings).props("flat")
 
         def on_save_settings():
-            ui.notify("✅ 設定を保存しました", type="positive")
+            cfg = get_config()
+            persist_user_settings_from_storage(
+                stored,
+                data_dir=cfg.data_dir,
+                config_defaults={
+                    "output_dir": str(cfg.mfeps_output_dir),
+                    "font_size": cfg.mfeps_font_size,
+                    "theme": cfg.mfeps_theme,
+                    "rfc3161_enabled": cfg.mfeps_rfc3161_enabled,
+                    "tsa_url": cfg.mfeps_rfc3161_tsa_url,
+                    "double_read": cfg.mfeps_double_read_optical,
+                    "ewfacquire_path": cfg.ewfacquire_path or "",
+                    "ewfverify_path": cfg.ewfverify_path or "",
+                    "buffer_label": stored.get("buffer_label", "1 MiB"),
+                },
+            )
+            reload_config()
+            ui.notify(
+                "✅ 設定を保存しました（出力先・バッファ・フォント・ツールパスは "
+                "次回ジョブ・ページ遷移から反映）",
+                type="positive",
+            )
 
         ui.button("保存", icon="save", color="primary", on_click=on_save_settings).props("unelevated")
