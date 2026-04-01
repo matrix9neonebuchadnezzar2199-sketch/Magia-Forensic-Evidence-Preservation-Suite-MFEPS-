@@ -138,22 +138,24 @@ class DvdCssReader:
             raise RuntimeError("DvdCssReader が未オープンです")
 
         dvd = self._dvd
-        seek_flags = dvd.SEEK_KEY if is_title_start else dvd.SEEK_MPEG
-
-        result_lba = dvd.seek(lba, seek_flags)
-        if result_lba < 0 and is_title_start:
-            logger.warning(
-                "pydvdcss SEEK_KEY 失敗、SEEK_MPEG でリトライ: LBA=%d",
-                lba,
-            )
-            seek_flags = dvd.SEEK_MPEG
+        # 連続読取時は明示 seek を省略し、ctypes 呼び出し回数を抑える。
+        # 初回（_current_lba=0）かつ lba=0 もここで通る。
+        if lba != self._current_lba:
+            seek_flags = dvd.SEEK_KEY if is_title_start else dvd.SEEK_MPEG
             result_lba = dvd.seek(lba, seek_flags)
+            if result_lba < 0 and is_title_start:
+                logger.warning(
+                    "pydvdcss SEEK_KEY 失敗、SEEK_MPEG でリトライ: LBA=%d",
+                    lba,
+                )
+                seek_flags = dvd.SEEK_MPEG
+                result_lba = dvd.seek(lba, seek_flags)
 
-        if result_lba < 0:
-            raise OSError(
-                f"pydvdcss シーク失敗: LBA={lba}, flags={seek_flags}, "
-                f"error={_safe_pydvdcss_error(dvd)}"
-            )
+            if result_lba < 0:
+                raise OSError(
+                    f"pydvdcss シーク失敗: LBA={lba}, flags={seek_flags}, "
+                    f"error={_safe_pydvdcss_error(dvd)}"
+                )
 
         read_flags = dvd.READ_DECRYPT if self._is_scrambled else dvd.NO_FLAGS
 

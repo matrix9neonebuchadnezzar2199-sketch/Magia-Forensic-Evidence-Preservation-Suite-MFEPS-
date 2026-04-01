@@ -290,7 +290,7 @@ class OpticalMediaAnalyzer:
 class OpticalImagingEngine:
     """光学メディアイメージングエンジン"""
 
-    def __init__(self, buffer_sectors: int = 32, retry_count: int = 5):
+    def __init__(self, buffer_sectors: int = 512, retry_count: int = 5):
         self.buffer_sectors = buffer_sectors  # 一度に読むセクタ数
         self.retry_count = retry_count
         self._cancel_event = threading.Event()
