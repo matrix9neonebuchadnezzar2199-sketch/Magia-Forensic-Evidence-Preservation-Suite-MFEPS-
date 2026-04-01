@@ -1,7 +1,7 @@
 # MFEPS v2.1.1 — ewfinfo Integration & Hardening
 
 **Release date**: 2026-04-01  
-**Commit**: 46973a7 (main) — 機能実装の中心は c0cfcbb（Sprint A/B/C）を含む  
+**Commit**: `c0cfcbb`（Sprint A/B/C 機能理解凍結）— タグ `v2.1.1` は **CHANGELOG・本ファイルを含む main 先端**（例: `f985c1b` 以降）に付与することを推奨  
 **Previous release**: v2.1.0 (6080b85)  
 **Tests**: 100 passed  
 

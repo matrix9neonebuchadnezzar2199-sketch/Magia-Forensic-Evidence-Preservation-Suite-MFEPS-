@@ -2,7 +2,7 @@
 
 ## 前提条件
 - Windows 10/11 x64、管理者権限
-- Python 3.13、MFEPS コミット `46973a7`（main 先端。機能ベースは `c0cfcbb` を含む）
+- Python 3.13、MFEPS は `c0cfcbb` 以降の main（CHANGELOG・回帰手順を含むならリリースタグを付ける直前の先端を記録）
 - ewfacquire/ewfverify/ewfinfo 20230405 を libs/ に配置
 - USB メモリ（4 GB 以上）接続済み
 - 光学ドライブ + データ CD/DVD（任意）
