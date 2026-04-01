@@ -24,6 +24,12 @@ from src.core.win32_raw_io import (
 
 logger = logging.getLogger("mfeps.optical_engine")
 
+# 容量選択・メディア種別のしきい値（バイト）
+# DVD 以上のディスクでは IOCTL が TOC リードアウトより信頼しやすい（CD の 150 セクタ問題は CD 特有）
+_OPTICAL_DVD_HINT_BYTES = 700_000_000
+# ISO9660 PVD のみから BD / DVD / CD を切り分けるときの容量下限
+_OPTICAL_BD_DATA_BYTES = 25_000_000_000
+
 
 class TrackInfo(BaseModel):
     track_number: int = 0
@@ -55,6 +61,79 @@ class OpticalAnalysisResult(BaseModel):
 class OpticalMediaAnalyzer:
     """光学メディア種別判定 + 構造解析"""
 
+    @staticmethod
+    def _toc_leadout_and_max_bytes(
+        result: OpticalAnalysisResult, sector_size: int
+    ) -> tuple[int, int]:
+        """TOC からリードアウト換算バイトと max_lba 推定バイトを求める。"""
+        toc_leadout_bytes = 0
+        toc_max_bytes = 0
+        if not result.tracks:
+            return toc_leadout_bytes, toc_max_bytes
+        leadout = [t for t in result.tracks if t.track_number == 0xAA]
+        if leadout:
+            toc_leadout_bytes = leadout[0].address_lba * sector_size
+            result.toc_leadout_bytes = toc_leadout_bytes
+        else:
+            max_lba = max(t.address_lba for t in result.tracks)
+            toc_max_bytes = (max_lba + 32768) * sector_size
+        return toc_leadout_bytes, toc_max_bytes
+
+    def _fill_optical_capacity(
+        self,
+        result: OpticalAnalysisResult,
+        ioctl_bytes: int,
+        toc_leadout_bytes: int,
+        toc_max_bytes: int,
+        *,
+        prefer_ioctl_first: bool,
+    ) -> None:
+        """IOCTL / TOC から capacity_bytes・sector_count・capacity_source を設定。"""
+        ss = result.sector_size
+        if prefer_ioctl_first:
+            if ioctl_bytes > 0:
+                result.capacity_bytes = ioctl_bytes
+                result.sector_count = (ioctl_bytes + ss - 1) // ss
+                result.capacity_source = "ioctl"
+            elif toc_leadout_bytes > 0:
+                result.capacity_bytes = toc_leadout_bytes
+                result.sector_count = toc_leadout_bytes // ss
+                result.capacity_source = "toc_leadout"
+            elif toc_max_bytes > 0:
+                result.capacity_bytes = toc_max_bytes
+                result.sector_count = toc_max_bytes // ss
+                result.capacity_source = "toc_max"
+        else:
+            # CD 系: B-1 — TOC リードアウト > IOCTL > TOC max
+            if toc_leadout_bytes > 0:
+                result.capacity_bytes = toc_leadout_bytes
+                result.sector_count = toc_leadout_bytes // ss
+                result.capacity_source = "toc_leadout"
+            elif ioctl_bytes > 0:
+                result.capacity_bytes = ioctl_bytes
+                result.sector_count = (ioctl_bytes + ss - 1) // ss
+                result.capacity_source = "ioctl"
+            elif toc_max_bytes > 0:
+                result.capacity_bytes = toc_max_bytes
+                result.sector_count = toc_max_bytes // ss
+                result.capacity_source = "toc_max"
+
+        if result.capacity_bytes <= 0:
+            logger.warning(
+                "光学メディア容量を特定できませんでした: ioctl=%d, toc_leadout=%d",
+                ioctl_bytes,
+                toc_leadout_bytes,
+            )
+            if result.tracks:
+                leadout_fb = [t for t in result.tracks if t.track_number == 0xAA]
+                if leadout_fb:
+                    result.sector_count = leadout_fb[0].address_lba
+                else:
+                    max_lba = max(t.address_lba for t in result.tracks)
+                    result.sector_count = max_lba + 32768
+                result.capacity_bytes = result.sector_count * result.sector_size
+                result.capacity_source = "toc_fallback"
+
     def analyze(self, drive_path: str) -> OpticalAnalysisResult:
         """メディア全体の分析"""
         result = OpticalAnalysisResult(drive_path=drive_path)
@@ -79,16 +158,6 @@ class OpticalMediaAnalyzer:
             except Exception as e:
                 logger.warning(f"TOC 読取失敗: {e}")
 
-            # メディア種別判定
-            result.media_type = self._detect_media_type(handle, drive_path, result)
-
-            # セクタサイズ設定
-            if result.media_type == "CD-DA":
-                result.sector_size = 2352
-            else:
-                result.sector_size = 2048
-
-            # 容量計算: IOCTL と TOC の両方を記録し、信頼性の高い方を選択
             ioctl_bytes = 0
             try:
                 ioctl_bytes = get_disk_length(handle)
@@ -96,48 +165,38 @@ class OpticalMediaAnalyzer:
             except OSError:
                 pass
 
-            toc_leadout_bytes = 0
-            toc_max_bytes = 0
-            if result.tracks:
-                leadout = [t for t in result.tracks if t.track_number == 0xAA]
-                if leadout:
-                    toc_leadout_bytes = leadout[0].address_lba * result.sector_size
-                    result.toc_leadout_bytes = toc_leadout_bytes
-                else:
-                    max_lba = max(t.address_lba for t in result.tracks)
-                    toc_max_bytes = (max_lba + 32768) * result.sector_size
+            all_audio = bool(result.tracks) and all(
+                not t.is_data for t in result.tracks
+            )
 
-            # 優先順位: TOC リードアウト > IOCTL > TOC max_lba 推定
-            if toc_leadout_bytes > 0:
-                result.capacity_bytes = toc_leadout_bytes
-                result.sector_count = toc_leadout_bytes // result.sector_size
-                result.capacity_source = "toc_leadout"
-            elif ioctl_bytes > 0:
-                result.capacity_bytes = ioctl_bytes
-                result.sector_count = (
-                    (ioctl_bytes + result.sector_size - 1) // result.sector_size
+            if all_audio:
+                result.sector_size = 2352
+                toc_leadout_bytes, toc_max_bytes = self._toc_leadout_and_max_bytes(
+                    result, result.sector_size
                 )
-                result.capacity_source = "ioctl"
-            elif toc_max_bytes > 0:
-                result.capacity_bytes = toc_max_bytes
-                result.sector_count = toc_max_bytes // result.sector_size
-                result.capacity_source = "toc_max"
-
-            if result.capacity_bytes <= 0:
-                logger.warning(
-                    "光学メディア容量を特定できませんでした: ioctl=%d, toc_leadout=%d",
+                self._fill_optical_capacity(
+                    result,
                     ioctl_bytes,
                     toc_leadout_bytes,
+                    toc_max_bytes,
+                    prefer_ioctl_first=False,
                 )
-                if result.tracks:
-                    leadout_fb = [t for t in result.tracks if t.track_number == 0xAA]
-                    if leadout_fb:
-                        result.sector_count = leadout_fb[0].address_lba
-                    else:
-                        max_lba = max(t.address_lba for t in result.tracks)
-                        result.sector_count = max_lba + 32768
-                    result.capacity_bytes = result.sector_count * result.sector_size
-                    result.capacity_source = "toc_fallback"
+                result.media_type = "CD-DA"
+            else:
+                result.sector_size = 2048
+                toc_leadout_bytes, toc_max_bytes = self._toc_leadout_and_max_bytes(
+                    result, result.sector_size
+                )
+                # IOCTL が DVD 以上と推定できる大きさなら IOCTL 優先（TOC は不正確なことがある）
+                prefer_ioctl_first = ioctl_bytes > _OPTICAL_DVD_HINT_BYTES
+                self._fill_optical_capacity(
+                    result,
+                    ioctl_bytes,
+                    toc_leadout_bytes,
+                    toc_max_bytes,
+                    prefer_ioctl_first=prefer_ioctl_first,
+                )
+                result.media_type = self._detect_media_type(handle, drive_path, result)
 
             # ファイルシステム判定
             try:
@@ -160,12 +219,8 @@ class OpticalMediaAnalyzer:
 
     def _detect_media_type(self, handle, drive_path: str,
                            result: OpticalAnalysisResult) -> str:
-        """メディア種別を判定"""
-        # CD-DA: 全トラックがオーディオ
-        if result.tracks:
-            all_audio = all(not t.is_data for t in result.tracks)
-            if all_audio:
-                return "CD-DA"
+        """メディア種別を判定（analyze 内で容量計算後に呼ぶこと）。"""
+        cap = result.capacity_bytes or result.ioctl_length_bytes or 0
 
         # DVD/BD 判定: 先頭セクタからファイルシステム情報を読み取る
         try:
@@ -174,7 +229,7 @@ class OpticalMediaAnalyzer:
             # UDF / ISO9660 判定
             if data[1:6] == b'CD001':
                 # ISO9660 PVD
-                volume_label = data[40:72].decode("ascii", errors="replace").strip()
+                data[40:72].decode("ascii", errors="replace").strip()
 
                 # DVD-Video: VIDEO_TS フォルダの存在
                 try:
@@ -182,22 +237,25 @@ class OpticalMediaAnalyzer:
                     root_data = read_sectors(handle, 32768 + 2048 * 2, 2048 * 4)
                     if b'VIDEO_TS' in root_data:
                         return "DVD-Video"
-                    elif b'BDMV' in root_data:
+                    if b'BDMV' in root_data:
                         return "BD-Video"
                 except Exception:
                     pass
 
-                # セクタ数からCD/DVD/BD簡易判定
-                if result.sector_count > 2_300_000:  # ~4.7GB
-                    return "BD-Data" if result.sector_count > 12_000_000 else "DVD-Data"
-                else:
-                    return "CD-ROM"
+                # 容量ベース（sector_count は容量計算前だと常に 0 だったため cap を使用）
+                if cap > _OPTICAL_BD_DATA_BYTES:
+                    return "BD-Data"
+                if cap > _OPTICAL_DVD_HINT_BYTES:
+                    return "DVD-Data"
+                return "CD-ROM"
 
         except Exception as e:
             logger.debug(f"メディア種別判定のセクタ読取失敗: {e}")
 
-        # フォールバック: トラック構成から推定
-        if result.sector_count > 2_300_000:
+        # フォールバック: 容量から推定
+        if cap > _OPTICAL_BD_DATA_BYTES:
+            return "BD-Data"
+        if cap > _OPTICAL_DVD_HINT_BYTES:
             return "DVD-Data"
         return "CD-ROM"
 
