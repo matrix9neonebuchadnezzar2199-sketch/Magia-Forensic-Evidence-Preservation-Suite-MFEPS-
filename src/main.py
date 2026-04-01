@@ -79,6 +79,17 @@ def main():
     # 3. ロギング初期化
     setup_logging(config.logs_dir, config.mfeps_log_level)
     logger = get_logger("main")
+
+    # Windows: pydvdcss / libaacs 等が ctypes で libs/*.dll を解決できるようにする
+    if sys.platform == "win32":
+        try:
+            _libs = config.libs_dir.resolve()
+            _libs.mkdir(parents=True, exist_ok=True)
+            os.add_dll_directory(str(_libs))
+            logger.debug("Windows: DLL 検索パスに追加 %s", _libs)
+        except OSError as exc:
+            logger.warning("Windows: os.add_dll_directory(libs) 失敗: %s", exc)
+
     logger.info("=" * 60)
     logger.info(f"MFEPS v{APP_VERSION} 起動開始")
     logger.info(f"ベースディレクトリ: {config.base_dir}")
