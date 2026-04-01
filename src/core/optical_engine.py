@@ -46,6 +46,10 @@ class OpticalAnalysisResult(BaseModel):
     is_multisession: bool = False
     udf_version: Optional[str] = None
     volume_label: Optional[str] = None
+    # B-1: 容量ソース診断
+    ioctl_length_bytes: int = 0
+    toc_leadout_bytes: int = 0
+    capacity_source: str = ""
 
 
 class OpticalMediaAnalyzer:
@@ -84,26 +88,56 @@ class OpticalMediaAnalyzer:
             else:
                 result.sector_size = 2048
 
-            # 容量計算: IOCTL のディスク長を優先（DVD/BD/データ CD で有効なことが多い）
+            # 容量計算: IOCTL と TOC の両方を記録し、信頼性の高い方を選択
+            ioctl_bytes = 0
             try:
-                length_bytes = get_disk_length(handle)
-                if length_bytes > 0:
-                    result.capacity_bytes = length_bytes
-                    result.sector_count = (
-                        (length_bytes + result.sector_size - 1)
-                        // result.sector_size
-                    )
+                ioctl_bytes = get_disk_length(handle)
+                result.ioctl_length_bytes = ioctl_bytes
             except OSError:
-                length_bytes = 0
+                pass
 
-            if result.capacity_bytes <= 0 and result.tracks:
+            toc_leadout_bytes = 0
+            toc_max_bytes = 0
+            if result.tracks:
                 leadout = [t for t in result.tracks if t.track_number == 0xAA]
                 if leadout:
-                    result.sector_count = leadout[0].address_lba
+                    toc_leadout_bytes = leadout[0].address_lba * result.sector_size
+                    result.toc_leadout_bytes = toc_leadout_bytes
                 else:
                     max_lba = max(t.address_lba for t in result.tracks)
-                    result.sector_count = max_lba + 32768
-                result.capacity_bytes = result.sector_count * result.sector_size
+                    toc_max_bytes = (max_lba + 32768) * result.sector_size
+
+            # 優先順位: TOC リードアウト > IOCTL > TOC max_lba 推定
+            if toc_leadout_bytes > 0:
+                result.capacity_bytes = toc_leadout_bytes
+                result.sector_count = toc_leadout_bytes // result.sector_size
+                result.capacity_source = "toc_leadout"
+            elif ioctl_bytes > 0:
+                result.capacity_bytes = ioctl_bytes
+                result.sector_count = (
+                    (ioctl_bytes + result.sector_size - 1) // result.sector_size
+                )
+                result.capacity_source = "ioctl"
+            elif toc_max_bytes > 0:
+                result.capacity_bytes = toc_max_bytes
+                result.sector_count = toc_max_bytes // result.sector_size
+                result.capacity_source = "toc_max"
+
+            if result.capacity_bytes <= 0:
+                logger.warning(
+                    "光学メディア容量を特定できませんでした: ioctl=%d, toc_leadout=%d",
+                    ioctl_bytes,
+                    toc_leadout_bytes,
+                )
+                if result.tracks:
+                    leadout_fb = [t for t in result.tracks if t.track_number == 0xAA]
+                    if leadout_fb:
+                        result.sector_count = leadout_fb[0].address_lba
+                    else:
+                        max_lba = max(t.address_lba for t in result.tracks)
+                        result.sector_count = max_lba + 32768
+                    result.capacity_bytes = result.sector_count * result.sector_size
+                    result.capacity_source = "toc_fallback"
 
             # ファイルシステム判定
             try:

@@ -482,6 +482,12 @@ class E01Writer:
                 **self._subprocess_kwargs(),
             )
             stdout_data, stderr_data = await proc.communicate()
+            # ProactorEventLoop の transport クリーンアップ競合を緩和
+            try:
+                if hasattr(proc, "_transport") and proc._transport is not None:
+                    proc._transport.close()
+            except Exception:
+                pass
             output = stdout_data.decode("utf-8", errors="replace")
             if stderr_data:
                 output += "\n" + stderr_data.decode("utf-8", errors="replace")

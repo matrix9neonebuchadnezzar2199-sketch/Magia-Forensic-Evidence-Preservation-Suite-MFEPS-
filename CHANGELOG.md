@@ -47,6 +47,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - ewftools ビルドアーティファクト 59 ファイルを `.gitignore` に追加・`git rm --cached`
 - README.md を v2.1.0 に全面更新: タイトル・E01 ハッシュ説明（SHA-1 不使用注記）・実機テスト結果・libewf 既知制限・ewftools 入手元・E01 環境変数・ER 図の BigInteger 反映・テスト件数
 - `tests/integration/e01_test_results_20260331.md` を実機テスト結果で記入
+- **光学メディア容量 (Sprint B-1)**: `OpticalAnalysisResult` に `ioctl_length_bytes` / `toc_leadout_bytes` / `capacity_source` を追加。容量は **TOC リードアウトを IOCTL より優先**（CD で IOCTL がリードアウト先を含む場合のずれを緩和）。`ImagingJob.notes` に容量診断 JSON を追記し、PDF/HTML レポートで申告容量と実読取の差分を表示
+- **E01 ewfverify (Sprint B-2)**: `verify()` で `proc.communicate()` 後に subprocess transport を明示的に `close()`。`main.py` で Proactor の `ConnectionResetError`（pipe transport）を DEBUG ログに格下げ
 
 ### Removed
 - E01 出力における SHA-1 ハッシュ（libewf 20230405 が外部出力しないため全面除去、MD5 + SHA-256 の 2 系に統一）

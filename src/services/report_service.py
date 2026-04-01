@@ -2,6 +2,7 @@
 MFEPS v2.1.0 — 報告書生成サービス (PDF / HTML)
 Jinja2 テンプレート + ReportLab PDF
 """
+import json
 import logging
 import os
 from datetime import datetime, timezone
@@ -189,6 +190,28 @@ class ReportService:
                 c.drawString(50, y, s)
                 y -= 14
 
+            cap_notes = data.get("capacity_notes", "")
+            if cap_notes and "capacity_source" in cap_notes:
+                try:
+                    for line in reversed(cap_notes.split("\n")):
+                        line = line.strip()
+                        if line.startswith("{") and "capacity_source" in line:
+                            diag = json.loads(line)
+                            declared = diag.get("declared_capacity_bytes", 0)
+                            actual = diag.get("actual_read_bytes", 0)
+                            if declared != actual and declared > 0 and actual > 0:
+                                diff = declared - actual
+                                y -= 14
+                                c.drawString(
+                                    50,
+                                    y,
+                                    f"メディア申告容量: {declared:,} bytes "
+                                    f"(実読取との差分: {diff:,} bytes)",
+                                )
+                            break
+                except Exception:
+                    pass
+
             if data.get("output_format") == "e01":
                 y -= 20
                 if jp == "Helvetica":
@@ -319,6 +342,28 @@ th {{ background: #f0f0f0; }}
         match_result = data.get("match_result", "pending")
         match_class = "match" if match_result == "matched" else "mismatch"
         match_text = "全ハッシュ一致" if match_result == "matched" else "ハッシュ不一致"
+
+        cap_notes_html = ""
+        cap_notes = data.get("capacity_notes", "")
+        if cap_notes and "capacity_source" in cap_notes:
+            try:
+                for line in reversed(cap_notes.split("\n")):
+                    line = line.strip()
+                    if line.startswith("{") and "capacity_source" in line:
+                        diag = json.loads(line)
+                        declared = diag.get("declared_capacity_bytes", 0)
+                        actual = diag.get("actual_read_bytes", 0)
+                        if declared != actual and declared > 0 and actual > 0:
+                            diff = declared - actual
+                            cap_notes_html = (
+                                f'<tr><th>メディア申告容量</th>'
+                                f"<td>{declared:,} bytes "
+                                f"(実読取との差分: {diff:,} bytes)</td></tr>"
+                            )
+                        break
+            except Exception:
+                pass
+
         html += f"""
 </table>
 <p class="{match_class}">総合判定: {match_text}</p>
@@ -329,6 +374,7 @@ th {{ background: #f0f0f0; }}
 <tr><th>所要時間</th><td>{data.get('elapsed_seconds', 0):.1f} 秒</td></tr>
 <tr><th>平均速度</th><td>{data.get('avg_speed', 0):.1f} MiB/s</td></tr>
 <tr><th>エラーセクタ</th><td>{data.get('error_count', 0)}</td></tr>
+{cap_notes_html}
 </table>
 """
 
@@ -456,4 +502,5 @@ th {{ background: #f0f0f0; }}
                 )
                 or "",
                 "e01_command_line": getattr(job, "e01_command_line", None) or "",
+                "capacity_notes": job.notes or "",
             }

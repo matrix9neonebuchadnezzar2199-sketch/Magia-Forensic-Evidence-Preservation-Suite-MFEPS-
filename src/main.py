@@ -9,6 +9,7 @@ MFEPS v2.1.0 — エントリーポイント
 7. ページルーティング
 8. NiceGUI 起動
 """
+import asyncio
 import ctypes
 import logging
 import os
@@ -98,11 +99,29 @@ def main():
     # 6. Storage 初期化を startup イベント内で実行
     _admin = admin
 
+    def _proactor_exception_handler(loop, context):
+        """ProactorEventLoop の ConnectionResetError を DEBUG に格下げ"""
+        exc = context.get("exception")
+        msg = str(context.get("message", ""))
+        if isinstance(exc, ConnectionResetError) and (
+            "ProactorBasePipeTransport" in msg
+            or "ProactorBasePipeTransport" in str(exc)
+        ):
+            logger.debug(
+                "ProactorEventLoop pipe transport closed: %s",
+                msg or exc,
+            )
+            return
+        loop.default_exception_handler(context)
+
     @app.on_startup
     async def on_startup():
         app.storage.general["status_text"] = "準備完了"
         app.storage.general["disk_free"] = ""
         app.storage.general["is_admin"] = _admin
+        loop = asyncio.get_running_loop()
+        if hasattr(loop, "set_exception_handler"):
+            loop.set_exception_handler(_proactor_exception_handler)
 
     # 7. ページルーティング
     @ui.page("/login")

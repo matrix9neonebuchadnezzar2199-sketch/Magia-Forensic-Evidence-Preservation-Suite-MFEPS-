@@ -242,6 +242,20 @@ class OpticalService:
                         job.elapsed_seconds = elapsed_seconds
                         job.avg_speed_mbps = avg_speed_mibps
 
+                        capacity_diag = {
+                            "capacity_source": analysis.capacity_source,
+                            "ioctl_length_bytes": analysis.ioctl_length_bytes,
+                            "toc_leadout_bytes": analysis.toc_leadout_bytes,
+                            "declared_capacity_bytes": analysis.capacity_bytes,
+                            "actual_read_bytes": copied_bytes,
+                        }
+                        existing_notes = job.notes or ""
+                        diag_line = json.dumps(capacity_diag, ensure_ascii=False)
+                        if existing_notes:
+                            job.notes = existing_notes + "\n" + diag_line
+                        else:
+                            job.notes = diag_line
+
                         if decrypt_method:
                             job.copy_guard_detail = json.dumps(
                                 {
