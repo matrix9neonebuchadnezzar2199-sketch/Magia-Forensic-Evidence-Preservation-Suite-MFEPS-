@@ -4,6 +4,7 @@ MFEPS — 監査ログ category 定数（ハードコード回避）
 
 
 class AuditCategories:
+    SYSTEM = "system"
     IMAGING_START = "imaging_start"
     IMAGING_COMPLETE = "imaging_complete"
     IMAGING_CANCEL = "imaging_cancel"

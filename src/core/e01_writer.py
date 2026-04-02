@@ -291,6 +291,10 @@ class E01Writer:
             except Exception as e:
                 logger.debug("ewfverify -V 失敗: %s", e)
 
+        from src.core.pyewf_writer import get_pyewf_version, is_pyewf_available
+        result["pyewf_available"] = is_pyewf_available()
+        result["pyewf_version"] = get_pyewf_version() if result["pyewf_available"] else ""
+
         return result
 
     @staticmethod

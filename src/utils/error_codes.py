@@ -221,6 +221,20 @@ E8004 = ErrorCode(
     "AACS 復号に失敗しました", Severity.ERROR,
     "libaacs と keydb.cfg を確認してください")
 
+# ───── E9xxx: ユーザー / セッション ─────
+E9001 = ErrorCode(
+    "E9001", "Permission denied",
+    "権限が不足しています", Severity.ERROR,
+    "管理者に連絡してください")
+E9002 = ErrorCode(
+    "E9002", "Session expired",
+    "セッションの有効期限が切れました", Severity.WARN,
+    "再ログインしてください")
+E9003 = ErrorCode(
+    "E9003", "User account disabled",
+    "アカウントが無効化されています", Severity.ERROR,
+    "管理者に連絡してください")
+
 # 全エラーコードの辞書
 ALL_ERROR_CODES: dict[str, ErrorCode] = {
     ec.code: ec for ec in [
@@ -232,6 +246,7 @@ ALL_ERROR_CODES: dict[str, ErrorCode] = {
         E6001, E6002,
         E7001, E7002, E7003, E7004, E7005, E7006,
         E8001, E8002, E8003, E8004,
+        E9001, E9002, E9003,
     ]
 }
 
@@ -258,4 +273,5 @@ def category_for_code(code: str) -> str:
         6: "report",
         7: "e01",
         8: "optical_engine",
+        9: "user",
     }.get(n, "other")

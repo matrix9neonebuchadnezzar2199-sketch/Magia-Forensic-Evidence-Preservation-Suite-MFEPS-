@@ -28,6 +28,8 @@ class AuditService:
     def add_entry(self, level: str, category: str,
                   message: str, detail: str = "") -> None:
         """監査ログエントリを追加（ハッシュチェーン付き）"""
+        entry_hash_out = ""
+        prev_hash_out = ""
         try:
             with session_scope() as session:
                 last_entry = session.query(AuditLog).order_by(
@@ -61,9 +63,28 @@ class AuditService:
                     entry_hash=entry_hash,
                 )
                 session.add(entry)
+                entry_hash_out = entry_hash
+                prev_hash_out = prev_hash
 
         except Exception as e:
             logger.error(f"監査ログ追加失敗: {e}")
+            return
+
+        try:
+            from src.utils.audit_exporter import get_audit_exporter
+
+            exporter = get_audit_exporter()
+            if exporter:
+                exporter.export(
+                    level=level,
+                    category=category,
+                    message=message,
+                    detail=detail,
+                    entry_hash=entry_hash_out,
+                    prev_hash=prev_hash_out,
+                )
+        except Exception as ex:
+            logger.debug("監査ログ外部転送スキップ: %s", ex)
 
     def verify_chain(self) -> dict:
         """ハッシュチェーン全体を検証"""

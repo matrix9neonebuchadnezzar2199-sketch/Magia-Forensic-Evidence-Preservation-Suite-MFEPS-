@@ -1,5 +1,5 @@
 """
-MFEPS v2.1.0 — エントリーポイント
+MFEPS v2.2.0 — エントリーポイント
 1. 設定読込
 2. フォルダ構造確保
 3. ロギング初期化
@@ -17,7 +17,10 @@ import sys
 from pathlib import Path
 
 # パス設定（src/ をインポートルートに追加）
-BASE_DIR = Path(__file__).resolve().parent.parent
+if getattr(sys, "frozen", False):
+    BASE_DIR = Path(sys.executable).resolve().parent
+else:
+    BASE_DIR = Path(__file__).resolve().parent.parent
 if str(BASE_DIR) not in sys.path:
     sys.path.insert(0, str(BASE_DIR))
 
@@ -47,6 +50,7 @@ from src.ui.pages.reports import build_reports_page
 from src.ui.pages.coc import build_coc_page
 from src.ui.pages.audit import build_audit_page
 from src.ui.pages.hash_verify import build_hash_verify_page
+from src.ui.pages.admin_users import build_admin_users_page
 
 
 def is_admin() -> bool:
@@ -142,6 +146,15 @@ def main():
         app.storage.general["disk_free"] = ""
         app.storage.general["is_admin"] = _admin
         loop = asyncio.get_running_loop()
+        app.storage.general["_nicegui_loop"] = loop
+        from src.utils.i18n import get_i18n
+
+        locale = app.storage.general.get("locale", "ja")
+        get_i18n().set_locale(locale if locale in ("ja", "en") else "ja")
+        if sys.platform == "win32":
+            from src.core.device_watcher import get_device_watcher
+
+            get_device_watcher().start()
         if hasattr(loop, "set_exception_handler"):
             loop.set_exception_handler(_proactor_exception_handler)
 
@@ -152,35 +165,39 @@ def main():
 
     @ui.page("/")
     def page_dashboard():
-        create_layout(build_dashboard)
+        create_layout("/", build_dashboard)
 
     @ui.page("/settings")
     def page_settings():
-        create_layout(build_settings)
+        create_layout("/settings", build_settings)
 
     @ui.page("/usb-hdd")
     def page_usb_hdd():
-        create_layout(build_usb_hdd_page)
+        create_layout("/usb-hdd", build_usb_hdd_page)
 
     @ui.page("/optical")
     def page_optical():
-        create_layout(build_optical_page)
+        create_layout("/optical", build_optical_page)
 
     @ui.page("/hash-verify")
     def page_hash_verify():
-        create_layout(build_hash_verify_page)
+        create_layout("/hash-verify", build_hash_verify_page)
 
     @ui.page("/coc")
     def page_coc():
-        create_layout(build_coc_page)
+        create_layout("/coc", build_coc_page)
 
     @ui.page("/reports")
     def page_reports():
-        create_layout(build_reports_page)
+        create_layout("/reports", build_reports_page)
 
     @ui.page("/audit")
     def page_audit():
-        create_layout(build_audit_page)
+        create_layout("/audit", build_audit_page)
+
+    @ui.page("/admin/users")
+    def page_admin_users():
+        create_layout("/admin/users", build_admin_users_page)
 
     # 法的免責ダイアログは各ページの layout 内で表示
     # (on_connect は NiceGUI 3.x では UI 要素の操作に制限あり)

@@ -15,6 +15,7 @@ from src.ui.components.legal_consent_dialog import (
     show_legal_consent_dialog,
 )
 from src.ui.session_auth import get_current_actor_name
+from src.utils.rbac import require_role
 
 
 def build_optical_page():
@@ -150,6 +151,7 @@ def build_optical_page():
             with ui.stepper_navigation():
                 ui.button("← 戻る", on_click=stepper.previous).props("flat")
 
+                @require_role("examiner")
                 async def start_copy():
                     case_val = case_input.value
                     ev_val = ev_input.value

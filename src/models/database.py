@@ -4,8 +4,11 @@ WALモード, 自動テーブル生成
 """
 import logging
 from contextlib import contextmanager
+from datetime import datetime, timezone
 from pathlib import Path
+from typing import Callable
 from sqlalchemy import create_engine, event, text
+from sqlalchemy.engine import Engine
 from sqlalchemy.orm import sessionmaker, Session
 
 from src.models.schema import Base
@@ -15,10 +18,189 @@ logger = logging.getLogger("mfeps.database")
 _engine = None
 _session_factory = None
 
+_SCHEMA_VERSION = 7  # Phase 8: users.is_active
+
+
+def _ensure_schema_version_table(engine: Engine) -> None:
+    with engine.connect() as conn:
+        conn.execute(text(
+            "CREATE TABLE IF NOT EXISTS schema_version ("
+            "  id INTEGER PRIMARY KEY DEFAULT 1,"
+            "  version INTEGER NOT NULL DEFAULT 0,"
+            "  updated_at TEXT DEFAULT ''"
+            ")"
+        ))
+        row = conn.execute(
+            text("SELECT version FROM schema_version WHERE id = 1")
+        ).fetchone()
+        if row is None:
+            conn.execute(text(
+                "INSERT INTO schema_version (id, version, updated_at) "
+                "VALUES (1, 0, '')"
+            ))
+        conn.commit()
+
+
+def _get_schema_version(engine: Engine) -> int:
+    with engine.connect() as conn:
+        row = conn.execute(
+            text("SELECT version FROM schema_version WHERE id = 1")
+        ).fetchone()
+        return int(row[0]) if row else 0
+
+
+def _set_schema_version(engine: Engine, version: int) -> None:
+    ts = datetime.now(timezone.utc).isoformat()
+    with engine.connect() as conn:
+        conn.execute(text(
+            "UPDATE schema_version SET version = :v, updated_at = :t WHERE id = 1"
+        ), {"v": version, "t": ts})
+        conn.commit()
+
+
+def _migration_1_imaging_write_block(engine: Engine) -> None:
+    with engine.connect() as conn:
+        rows = conn.execute(text("PRAGMA table_info(imaging_jobs)")).fetchall()
+        col_names = {r[1] for r in rows}
+        if "write_block_method" not in col_names:
+            conn.execute(
+                text(
+                    "ALTER TABLE imaging_jobs ADD COLUMN write_block_method "
+                    "VARCHAR(20) DEFAULT 'none'"
+                )
+            )
+            logger.info("マイグレーション: imaging_jobs.write_block_method を追加しました")
+        conn.commit()
+
+
+def _migration_2_audit_hash_timestamp(engine: Engine) -> None:
+    with engine.connect() as conn:
+        rows = conn.execute(text("PRAGMA table_info(audit_log)")).fetchall()
+        col_names = {r[1] for r in rows}
+        if "hash_timestamp_iso" not in col_names:
+            conn.execute(
+                text(
+                    "ALTER TABLE audit_log ADD COLUMN hash_timestamp_iso "
+                    "VARCHAR(64) DEFAULT ''"
+                )
+            )
+            conn.commit()
+            logger.info("マイグレーション: audit_log.hash_timestamp_iso を追加しました")
+
+
+def _migration_3_hash_sha512(engine: Engine) -> None:
+    with engine.connect() as conn:
+        rows = conn.execute(text("PRAGMA table_info(hash_records)")).fetchall()
+        col_names = {r[1] for r in rows}
+        if "sha512" not in col_names:
+            conn.execute(
+                text(
+                    "ALTER TABLE hash_records ADD COLUMN sha512 VARCHAR(128) DEFAULT ''"
+                )
+            )
+            conn.commit()
+            logger.info("マイグレーション: hash_records.sha512 を追加しました")
+
+
+def _migration_4_evidence_unique_index(engine: Engine) -> None:
+    try:
+        with engine.connect() as conn:
+            conn.execute(
+                text(
+                    "CREATE UNIQUE INDEX IF NOT EXISTS uq_evidence_case_number "
+                    "ON evidence_items (case_id, evidence_number)"
+                )
+            )
+            conn.commit()
+            logger.info(
+                "マイグレーション: evidence_items.uq_evidence_case_number を確認しました"
+            )
+    except Exception as e:
+        logger.warning(
+            "evidence_items 一意インデックスを作成できませんでした: %s",
+            e,
+        )
+
+
+def _migration_5_e01_columns(engine: Engine) -> None:
+    e01_new_columns = {
+        "e01_compression": "VARCHAR(40) DEFAULT ''",
+        "e01_segment_size_bytes": "INTEGER DEFAULT 0",
+        "e01_ewf_format": "VARCHAR(20) DEFAULT ''",
+        "e01_examiner_name": "VARCHAR(200) DEFAULT ''",
+        "e01_notes": "TEXT DEFAULT ''",
+        "e01_command_line": "TEXT DEFAULT ''",
+        "e01_ewfacquire_version": "VARCHAR(100) DEFAULT ''",
+        "e01_segment_count": "INTEGER DEFAULT 0",
+        "e01_log_path": "VARCHAR(500) DEFAULT ''",
+    }
+    with engine.connect() as conn:
+        rows = conn.execute(text("PRAGMA table_info(imaging_jobs)")).fetchall()
+        col_names = {r[1] for r in rows}
+        for col_name, col_def in e01_new_columns.items():
+            if col_name not in col_names:
+                conn.execute(
+                    text(
+                        f"ALTER TABLE imaging_jobs ADD COLUMN {col_name} {col_def}"
+                    )
+                )
+                logger.info(
+                    "マイグレーション: imaging_jobs.%s を追加しました", col_name
+                )
+        conn.commit()
+
+
+def _migration_6_noop(_engine: Engine) -> None:
+    """schema_version テーブルは _ensure_schema_version_table で用意済み。"""
+    pass
+
+
+def _migration_7_users_is_active(engine: Engine) -> None:
+    with engine.connect() as conn:
+        rows = conn.execute(text("PRAGMA table_info(users)")).fetchall()
+        col_names = {r[1] for r in rows}
+        if "is_active" not in col_names:
+            conn.execute(
+                text(
+                    "ALTER TABLE users ADD COLUMN is_active BOOLEAN DEFAULT 1"
+                )
+            )
+            logger.info("マイグレーション: users.is_active を追加しました")
+        conn.commit()
+
+
+_MIGRATIONS: dict[int, Callable[[Engine], None]] = {
+    1: _migration_1_imaging_write_block,
+    2: _migration_2_audit_hash_timestamp,
+    3: _migration_3_hash_sha512,
+    4: _migration_4_evidence_unique_index,
+    5: _migration_5_e01_columns,
+    6: _migration_6_noop,
+    7: _migration_7_users_is_active,
+}
+
+
+def _run_migrations(engine: Engine) -> None:
+    _ensure_schema_version_table(engine)
+    current = _get_schema_version(engine)
+    for ver in range(current + 1, _SCHEMA_VERSION + 1):
+        fn = _MIGRATIONS.get(ver)
+        if fn is None:
+            logger.warning("未定義のマイグレーション版: %s", ver)
+            continue
+        fn(engine)
+        _set_schema_version(engine, ver)
+        logger.info("スキーマをバージョン %s に更新しました", ver)
+
 
 def init_database(db_path: Path) -> None:
     """データベースを初期化"""
     global _engine, _session_factory
+
+    if _engine is not None:
+        _engine.dispose()
+        _engine = None
+        _session_factory = None
 
     db_path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -36,87 +218,7 @@ def init_database(db_path: Path) -> None:
     # テーブル自動生成
     Base.metadata.create_all(_engine)
 
-    # 既存 DB 向け: imaging_jobs.write_block_method（Phase 3.4）
-    with _engine.connect() as conn:
-        rows = conn.execute(text("PRAGMA table_info(imaging_jobs)")).fetchall()
-        col_names = {r[1] for r in rows}
-        if "write_block_method" not in col_names:
-            conn.execute(
-                text(
-                    "ALTER TABLE imaging_jobs ADD COLUMN write_block_method "
-                    "VARCHAR(20) DEFAULT 'none'"
-                )
-            )
-            conn.commit()
-            logger.info("マイグレーション: imaging_jobs.write_block_method を追加しました")
-
-    # 既存 DB 向け: audit_log.hash_timestamp_iso
-    with _engine.connect() as conn:
-        rows = conn.execute(text("PRAGMA table_info(audit_log)")).fetchall()
-        col_names = {r[1] for r in rows}
-        if "hash_timestamp_iso" not in col_names:
-            conn.execute(
-                text("ALTER TABLE audit_log ADD COLUMN hash_timestamp_iso VARCHAR(64) DEFAULT ''")
-            )
-            conn.commit()
-            logger.info("マイグレーション: audit_log.hash_timestamp_iso を追加しました")
-
-    # hash_records.sha512（オプションアルゴリズム）
-    with _engine.connect() as conn:
-        rows = conn.execute(text("PRAGMA table_info(hash_records)")).fetchall()
-        col_names = {r[1] for r in rows}
-        if "sha512" not in col_names:
-            conn.execute(
-                text("ALTER TABLE hash_records ADD COLUMN sha512 VARCHAR(128) DEFAULT ''")
-            )
-            conn.commit()
-            logger.info("マイグレーション: hash_records.sha512 を追加しました")
-
-    # (case_id, evidence_number) 一意 — TOCTOU 対策（重複行があると失敗する）
-    try:
-        with _engine.connect() as conn:
-            conn.execute(
-                text(
-                    "CREATE UNIQUE INDEX IF NOT EXISTS uq_evidence_case_number "
-                    "ON evidence_items (case_id, evidence_number)"
-                )
-            )
-            conn.commit()
-            logger.info(
-                "マイグレーション: evidence_items.uq_evidence_case_number を確認しました"
-            )
-    except Exception as e:
-        logger.warning(
-            "evidence_items 一意インデックスを作成できませんでした: %s",
-            e,
-        )
-
-    # E01 カラム (Phase 1)
-    e01_new_columns = {
-        "e01_compression": "VARCHAR(40) DEFAULT ''",
-        "e01_segment_size_bytes": "INTEGER DEFAULT 0",
-        "e01_ewf_format": "VARCHAR(20) DEFAULT ''",
-        "e01_examiner_name": "VARCHAR(200) DEFAULT ''",
-        "e01_notes": "TEXT DEFAULT ''",
-        "e01_command_line": "TEXT DEFAULT ''",
-        "e01_ewfacquire_version": "VARCHAR(100) DEFAULT ''",
-        "e01_segment_count": "INTEGER DEFAULT 0",
-        "e01_log_path": "VARCHAR(500) DEFAULT ''",
-    }
-    with _engine.connect() as conn:
-        rows = conn.execute(text("PRAGMA table_info(imaging_jobs)")).fetchall()
-        col_names = {r[1] for r in rows}
-        for col_name, col_def in e01_new_columns.items():
-            if col_name not in col_names:
-                conn.execute(
-                    text(
-                        f"ALTER TABLE imaging_jobs ADD COLUMN {col_name} {col_def}"
-                    )
-                )
-                logger.info(
-                    "マイグレーション: imaging_jobs.%s を追加しました", col_name
-                )
-        conn.commit()
+    _run_migrations(_engine)
 
     _session_factory = sessionmaker(bind=_engine, expire_on_commit=False)
 

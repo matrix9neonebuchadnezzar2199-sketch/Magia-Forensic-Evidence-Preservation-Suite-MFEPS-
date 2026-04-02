@@ -1,0 +1,79 @@
+{
+  "app": {
+    "title": "MFEPS — デジタル証拠保全スイート v{version}",
+    "admin_ok": "管理者権限: ✅ 確認済み",
+    "admin_warn": "管理者権限: ⚠️ 未取得 — デバイスアクセスが制限されます"
+  },
+  "dashboard": {
+    "title": "🏠 ダッシュボード",
+    "cases": "総案件数",
+    "evidence": "総証拠品数",
+    "images": "総イメージ数",
+    "errors": "エラーセクタ合計",
+    "recent_jobs": "最近のイメージングジョブ",
+    "no_jobs": "ジョブがありません。サイドバーからイメージングを開始してください。",
+    "disk_title": "出力先ディスク容量"
+  },
+  "usb_hdd": {
+    "title": "💾 USB・HDD イメージング",
+    "step1_title": "ドライブ選択",
+    "step1_desc": "接続中のデバイスから対象を選択してください",
+    "detect_btn": "🔄 デバイス検出",
+    "detecting": "🔍 デバイス検出中...",
+    "detected": "✅ {count} 台のデバイスが検出されました",
+    "step2_title": "プリスキャン・設定",
+    "case_number": "案件番号",
+    "evidence_number": "証拠品番号",
+    "verify_after_copy": "コピー後にハッシュ検証を実行",
+    "output_format": "出力形式",
+    "start_copy": "▶️ コピー開始",
+    "step3_title": "コピー実行",
+    "step4_title": "リザルト",
+    "copy_complete": "✅ コピー完了",
+    "cancelled": "⚠️ キャンセルされました",
+    "failed": "❌ イメージング失敗",
+    "hotplug_in": "🔌 デバイス接続: {drive}",
+    "hotplug_out": "⏏ デバイス取外し: {drive}"
+  },
+  "optical": {
+    "title": "💿 CD・DVD・BD イメージング",
+    "step1_title": "ドライブ選択",
+    "detect_btn": "🔄 ドライブ検出",
+    "media_loaded": "メディア装填済み",
+    "media_not_loaded": "メディア未挿入"
+  },
+  "settings": {
+    "title": "⚙️ 設定",
+    "display": "表示",
+    "language": "言語",
+    "font_size": "フォントサイズ",
+    "imaging": "イメージング",
+    "buffer_size": "バッファサイズ",
+    "hash_section": "ハッシュ",
+    "save": "保存",
+    "reset": "リセット",
+    "saved_msg": "設定を保存しました",
+    "audit_export": "監査ログの外部転送",
+    "syslog_host": "Syslog ホスト（空で無効）",
+    "syslog_port": "Syslog ポート",
+    "syslog_proto": "プロトコル",
+    "audit_jsonl": "JSON Lines ファイルへ書き込み",
+    "audit_jsonl_path": "JSONL 出力パス（相対はベースディレクトリ基準）"
+  },
+  "report": {
+    "title": "📄 レポート管理",
+    "generate_all": "全ジョブのレポート一括生成",
+    "open_folder": "レポートフォルダを開く",
+    "hash_section": "ハッシュ検証結果",
+    "stats_section": "統計情報",
+    "matched": "全ハッシュ一致: 完全性確認済み",
+    "mismatched": "ハッシュ不一致: 完全性に問題あり"
+  },
+  "common": {
+    "next": "次へ →",
+    "back": "← 戻る",
+    "cancel": "⏹ 中止",
+    "pause": "⏸ 一時停止",
+    "resume": "▶ 再開"
+  }
+}

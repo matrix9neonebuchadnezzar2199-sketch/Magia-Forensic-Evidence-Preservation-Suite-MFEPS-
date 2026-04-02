@@ -8,13 +8,17 @@ from src.utils.constants import APP_VERSION
 from src.ui.theme.modern_dark import CUSTOM_CSS
 from src.ui.session_auth import require_auth, clear_session
 from src.services.audit_service import get_audit_service
+from src.utils.rbac import check_page_access, has_permission
 import json
 
 
-def create_layout(content_builder):
+def create_layout(page_path: str, content_builder):
     """メインレイアウトを構築"""
 
     if not require_auth():
+        return
+    if not check_page_access(page_path):
+        ui.navigate.to("/")
         return
 
     # ---------- ダークモード設定 ----------
@@ -62,10 +66,11 @@ def create_layout(content_builder):
                 "flat dense no-caps color=white"
             ).classes("text-caption")
 
-            ui.button(
-                icon="settings",
-                on_click=lambda: ui.navigate.to("/settings"),
-            ).props("flat round dense color=white")
+            if has_permission("admin"):
+                ui.button(
+                    icon="settings",
+                    on_click=lambda: ui.navigate.to("/settings"),
+                ).props("flat round dense color=white")
 
     # ---------- サイドバー ----------
     with ui.left_drawer(value=True, bordered=True).classes(
@@ -75,17 +80,18 @@ def create_layout(content_builder):
         # ---- メディアコピー セクション ----
         ui.label("メディアコピー").classes("section-header")
 
-        ui.button(
-            "💾 USB・HDD",
-            on_click=lambda: ui.navigate.to("/usb-hdd"),
-            icon="usb"
-        ).props("flat align=left").classes("full-width q-mx-sm")
+        if has_permission("examiner"):
+            ui.button(
+                "💾 USB・HDD",
+                on_click=lambda: ui.navigate.to("/usb-hdd"),
+                icon="usb"
+            ).props("flat align=left").classes("full-width q-mx-sm")
 
-        ui.button(
-            "💿 CD・DVD・BD",
-            on_click=lambda: ui.navigate.to("/optical"),
-            icon="album"
-        ).props("flat align=left").classes("full-width q-mx-sm")
+            ui.button(
+                "💿 CD・DVD・BD",
+                on_click=lambda: ui.navigate.to("/optical"),
+                icon="album"
+            ).props("flat align=left").classes("full-width q-mx-sm")
 
         ui.separator().classes("q-my-sm")
 
@@ -98,17 +104,18 @@ def create_layout(content_builder):
             icon="dashboard"
         ).props("flat align=left").classes("full-width q-mx-sm")
 
-        ui.button(
-            "🔑 ハッシュ検証",
-            on_click=lambda: ui.navigate.to("/hash-verify"),
-            icon="verified_user"
-        ).props("flat align=left").classes("full-width q-mx-sm")
+        if has_permission("examiner"):
+            ui.button(
+                "🔑 ハッシュ検証",
+                on_click=lambda: ui.navigate.to("/hash-verify"),
+                icon="verified_user"
+            ).props("flat align=left").classes("full-width q-mx-sm")
 
-        ui.button(
-            "⛓️ Chain of Custody",
-            on_click=lambda: ui.navigate.to("/coc"),
-            icon="link"
-        ).props("flat align=left").classes("full-width q-mx-sm")
+            ui.button(
+                "⛓️ Chain of Custody",
+                on_click=lambda: ui.navigate.to("/coc"),
+                icon="link"
+            ).props("flat align=left").classes("full-width q-mx-sm")
 
         ui.button(
             "📄 レポート",
@@ -121,6 +128,20 @@ def create_layout(content_builder):
             on_click=lambda: ui.navigate.to("/audit"),
             icon="assignment"
         ).props("flat align=left").classes("full-width q-mx-sm")
+
+        if has_permission("admin"):
+            ui.separator().classes("q-my-sm")
+            ui.label("管理者").classes("section-header")
+            ui.button(
+                "⚙️ 設定",
+                on_click=lambda: ui.navigate.to("/settings"),
+                icon="settings",
+            ).props("flat align=left").classes("full-width q-mx-sm")
+            ui.button(
+                "👥 ユーザー管理",
+                on_click=lambda: ui.navigate.to("/admin/users"),
+                icon="people",
+            ).props("flat align=left").classes("full-width q-mx-sm")
 
         # ---- スペーサー + バージョン ----
         ui.space()
