@@ -32,6 +32,18 @@ from src.utils.rfc3161_client import RFC3161Client
 
 logger = logging.getLogger("mfeps.optical_service")
 
+
+def _schedule_optical_progress_publish(job_id: str, payload: dict) -> None:
+    try:
+        loop = asyncio.get_running_loop()
+    except RuntimeError:
+        try:
+            loop = asyncio.get_event_loop()
+        except RuntimeError:
+            return
+    from src.services.progress_broadcaster import get_broadcaster
+    loop.create_task(get_broadcaster().publish(job_id, payload))
+
 class OpticalService:
     """光学メディアイメージング用オーケストレータ"""
 
@@ -155,10 +167,13 @@ class OpticalService:
                 self._progress[job_id]["eta_seconds"] = round(eta, 0)
                 prog_state["last_ts"] = now
                 prog_state["last_bytes"] = copied
+            _schedule_optical_progress_publish(job_id, dict(self._progress[job_id]))
 
-        # 非同期タスク起動
-        task = asyncio.create_task(
-            self._run_imaging(
+        from src.core.job_queue import JobPriority, get_job_queue
+
+        _, task = await get_job_queue().submit(
+            job_id,
+            lambda: self._run_imaging(
                 job_id,
                 engine,
                 drive_path,
@@ -173,7 +188,8 @@ class OpticalService:
                 hash_sha256=hash_sha256,
                 hash_sha512=hash_sha512,
                 pydvdcss_open_path=pydvdcss_open_path,
-            )
+            ),
+            JobPriority.NORMAL,
         )
         self._tasks[job_id] = task
 
@@ -480,13 +496,24 @@ class OpticalService:
             self._update_job_status(job_id, "failed")
             self._progress[job_id]["status"] = "failed"
         finally:
+            from src.services.progress_broadcaster import get_broadcaster
+            st = self._progress.get(job_id, {}).get("status", "")
+            if st in ("completed", "failed", "cancelled"):
+                get_broadcaster().clear_job(job_id)
             self._engines.pop(job_id, None)
             self._tasks.pop(job_id, None)
 
     def get_progress(self, job_id: str) -> dict:
-        p = self._progress.get(job_id, {"status": "unknown"})
-        # Update speed roughly here if tracking elapsed time
-        return p
+        from src.services.progress_broadcaster import get_broadcaster
+        base = dict(self._progress.get(job_id, {"status": "unknown"}))
+        latest = get_broadcaster().get_latest(job_id)
+        if latest:
+            merged = {**base}
+            for k, v in latest.items():
+                if k != "job_id":
+                    merged[k] = v
+            return merged
+        return base
 
     def _update_job_status(self, job_id: str, status: str, **kwargs) -> None:
         try:

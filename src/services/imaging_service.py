@@ -29,6 +29,20 @@ from src.utils.incomplete_file_reporting import (
     incomplete_reason_from_job_status,
 )
 from src.utils.rfc3161_client import RFC3161Client
+from src.utils.db_backup import create_backup
+
+
+def _schedule_progress_publish(job_id: str, payload: dict) -> None:
+    """同期コールバックから進捗ブロードキャストをスケジュール。"""
+    try:
+        loop = asyncio.get_running_loop()
+    except RuntimeError:
+        try:
+            loop = asyncio.get_event_loop()
+        except RuntimeError:
+            return
+    from src.services.progress_broadcaster import get_broadcaster
+    loop.create_task(get_broadcaster().publish(job_id, payload))
 
 
 def _parse_e01_remaining_to_seconds(remaining_str: str) -> float:
@@ -149,10 +163,11 @@ class ImagingService:
             from src.core.e01_writer import E01Writer
 
             avail = E01Writer.check_available()
-            if not avail["ewfacquire_available"]:
+            if not avail["ewfacquire_available"] and not avail.get("pyewf_available"):
                 raise RuntimeError(
-                    "E01 出力には ewfacquire.exe が必要です。"
-                    "libs/ewfacquire.exe を配置するか、設定画面または .env の EWFACQUIRE_PATH を指定してください。"
+                    "E01 出力には ewfacquire.exe または pyewf が必要です。"
+                    "libs/ewfacquire.exe を配置するか pyewf を pip インストールし、"
+                    "設定画面または .env の EWFACQUIRE_PATH を指定してください。"
                 )
 
         _stored = get_general_storage()
@@ -236,9 +251,13 @@ class ImagingService:
             evidence_number_str=evidence_id,
         )
 
+        from src.core.job_queue import JobPriority, get_job_queue
+
+        jq = get_job_queue()
         if output_format == OutputFormat.E01.value:
-            task = asyncio.create_task(
-                self._run_e01_imaging(
+            _, task = await jq.submit(
+                job_id,
+                lambda: self._run_e01_imaging(
                     job_id,
                     job_params,
                     device,
@@ -246,14 +265,24 @@ class ImagingService:
                     e01_description=e01_description,
                     e01_notes=e01_notes,
                     e01_compression=comp_str,
-                )
+                ),
+                JobPriority.NORMAL,
             )
         else:
             engine = ImagingEngine(buffer_size=config.mfeps_buffer_size)
-            if progress_callback:
-                engine.set_progress_callback(progress_callback)
+
+            def _engine_progress(p: dict) -> None:
+                _schedule_progress_publish(job_id, p)
+                if progress_callback:
+                    progress_callback(p)
+
+            engine.set_progress_callback(_engine_progress)
             self._engines[job_id] = engine
-            task = asyncio.create_task(self._run_imaging(job_id, engine, job_params))
+            _, task = await jq.submit(
+                job_id,
+                lambda: self._run_imaging(job_id, engine, job_params),
+                JobPriority.NORMAL,
+            )
 
         self._tasks[job_id] = task
 
@@ -281,21 +310,6 @@ class ImagingService:
         self._update_job_status(
             job_id, "imaging", started_at=datetime.now(timezone.utc)
         )
-
-        writer = E01Writer()
-        self._e01_writers[job_id] = writer
-
-        def on_e01_progress(p: dict) -> None:
-            self._results[job_id] = {
-                **self._results.get(job_id, {}),
-                "status": "imaging",
-                "copied_bytes": 0,
-                "total_bytes": device.capacity_bytes,
-                "speed_mibps": 0.0,
-                "e01_percent": p.get("percent", 0),
-            }
-
-        writer.set_progress_callback(on_e01_progress)
 
         _stored = get_general_storage()
 
@@ -347,6 +361,34 @@ class ImagingService:
             ),
             calculate_sha256=True,
         )
+
+        availability = E01Writer.check_available()
+        use_pyewf = (
+            not availability["ewfacquire_available"]
+            and availability.get("pyewf_available")
+        )
+
+        def on_e01_progress(p: dict) -> None:
+            self._results[job_id] = {
+                **self._results.get(job_id, {}),
+                "status": "imaging",
+                "copied_bytes": int(p.get("acquired_bytes") or 0),
+                "total_bytes": int(
+                    p.get("total_bytes") or device.capacity_bytes or 0
+                ),
+                "speed_mibps": 0.0,
+                "e01_percent": p.get("percent", 0),
+            }
+            _schedule_progress_publish(job_id, dict(self._results[job_id]))
+
+        if use_pyewf:
+            from src.core.pyewf_writer import PyEWFWriter
+            logger.info("ewfacquire 不在 — pyewf フォールバックを使用")
+            writer = PyEWFWriter()
+        else:
+            writer = E01Writer()
+        self._e01_writers[job_id] = writer
+        writer.set_progress_callback(on_e01_progress)
 
         audit.add_entry(
             level="INFO",
@@ -402,7 +444,8 @@ class ImagingService:
             match_result = "pending"
 
             if e01_result.success and params.verify_after_copy:
-                verify = await writer.verify(e01_result.output_files[0])
+                e01_verifier = E01Writer()
+                verify = await e01_verifier.verify(e01_result.output_files[0])
 
                 if verify.skipped:
                     match_result = "pending"
@@ -460,7 +503,8 @@ class ImagingService:
                     )
                 else:
                     try:
-                        info_result = await writer.info(e01_first)
+                        info_w = E01Writer()
+                        info_result = await info_w.info(e01_first)
                         if info_result.success:
                             self._e01_info_cache[job_id] = info_result
                             payload = json.dumps(
@@ -698,6 +742,13 @@ class ImagingService:
             "incomplete_files": result.incomplete_file_records,
         }
 
+        if result.status == "completed":
+            create_backup(reason=f"job_{result.job_id[:8]}")
+
+        from src.services.progress_broadcaster import get_broadcaster
+        if result.status in ("completed", "failed", "cancelled"):
+            get_broadcaster().clear_job(result.job_id)
+
     def get_e01_info(self, job_id: str) -> Optional[E01InfoResult]:
         """ewfinfo パース結果（メモリキャッシュまたは job.notes の JSON）。"""
         cached = self._e01_info_cache.get(job_id)
@@ -735,35 +786,49 @@ class ImagingService:
 
     def get_progress(self, job_id: str) -> dict:
         """実行中ジョブの進捗を取得"""
+        from src.services.progress_broadcaster import get_broadcaster
+
+        base: dict
         engine = self._engines.get(job_id)
         if engine:
-            return engine.get_progress()
-        writer = self._e01_writers.get(job_id)
-        if writer:
-            p = writer.get_progress()
-            acquired = int(p.get("acquired_bytes") or 0)
-            total = int(p.get("total_bytes") or 0)
-            speed_b = int(p.get("speed_bytes") or 0)
-            speed_mibps = (
-                speed_b / (1024 * 1024) if speed_b > 0 else 0.0
-            )
-            eta = _parse_e01_remaining_to_seconds(
-                p.get("remaining") or ""
-            )
-            return {
-                "status": p.get("status", "imaging"),
-                "copied_bytes": acquired,
-                "total_bytes": total,
-                "speed_mibps": speed_mibps,
-                "e01_percent": p.get("percent", 0),
-                "eta_seconds": eta,
-                "error_count": 0,
-                "e01_remaining": p.get("remaining", ""),
-                "e01_speed_display": p.get("speed_display", ""),
-            }
-        if job_id in self._results:
-            return self._results[job_id]
-        return {"status": "unknown"}
+            base = engine.get_progress()
+        else:
+            writer = self._e01_writers.get(job_id)
+            if writer:
+                p = writer.get_progress()
+                acquired = int(p.get("acquired_bytes") or 0)
+                total = int(p.get("total_bytes") or 0)
+                speed_b = int(p.get("speed_bytes") or 0)
+                speed_mibps = (
+                    speed_b / (1024 * 1024) if speed_b > 0 else 0.0
+                )
+                eta = _parse_e01_remaining_to_seconds(
+                    p.get("remaining") or ""
+                )
+                base = {
+                    "status": p.get("status", "imaging"),
+                    "copied_bytes": acquired,
+                    "total_bytes": total,
+                    "speed_mibps": speed_mibps,
+                    "e01_percent": p.get("percent", 0),
+                    "eta_seconds": eta,
+                    "error_count": 0,
+                    "e01_remaining": p.get("remaining", ""),
+                    "e01_speed_display": p.get("speed_display", ""),
+                }
+            elif job_id in self._results:
+                base = dict(self._results[job_id])
+            else:
+                base = {"status": "unknown"}
+
+        latest = get_broadcaster().get_latest(job_id)
+        if latest:
+            merged = {**base}
+            for k, v in latest.items():
+                if k != "job_id":
+                    merged[k] = v
+            return merged
+        return base
 
     async def cancel_imaging(self, job_id: str) -> None:
         """イメージングをキャンセル（RAW / E01）"""
