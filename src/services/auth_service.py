@@ -48,12 +48,16 @@ class AuthService:
                 return None
             if not self.verify_password(password, user.password_hash):
                 return None
+            if not getattr(user, "is_active", True):
+                logger.warning("無効化アカウントでログイン試行: %s", username)
+                return None
             user.last_login_at = datetime.now(timezone.utc)
             return {
                 "id": user.id,
                 "username": user.username,
                 "display_name": user.display_name or user.username,
                 "role": user.role,
+                "is_active": getattr(user, "is_active", True),
             }
 
     def get_user_by_id(self, user_id: str) -> Optional[dict[str, Any]]:
@@ -67,6 +71,7 @@ class AuthService:
                 "username": user.username,
                 "display_name": user.display_name or user.username,
                 "role": user.role,
+                "is_active": getattr(user, "is_active", True),
             }
 
 

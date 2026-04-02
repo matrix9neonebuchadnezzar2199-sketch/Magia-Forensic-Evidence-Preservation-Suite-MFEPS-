@@ -4,6 +4,9 @@ source = src
 omit =
     src/ui/*
     src/main.py
+    # 光学オプション: ネイティブ DLL / 実ドライブ依存が強く CI では未実行
+    src/core/aacs_reader.py
+    src/core/dvdcss_reader.py
 
 [report]
 exclude_lines =

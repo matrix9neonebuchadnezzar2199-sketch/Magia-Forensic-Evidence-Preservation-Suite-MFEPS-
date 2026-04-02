@@ -211,3 +211,96 @@ def test_pdf_raises_import_error_when_reportlab_missing(
         ):
             with pytest.raises(ImportError):
                 svc.generate_pdf("jid")
+
+
+@patch("src.services.report_service.get_config")
+def test_generate_pdf_runs_full_pipeline(mock_cfg, tmp_path):
+    """ReportLab PDF の主要分岐を一括で実行（カバレッジ用）"""
+    from pathlib import Path
+
+    from src.services.report_service import ReportService
+
+    mock_cfg.return_value = MagicMock(reports_dir=tmp_path / "rep")
+    notes = (
+        '{"capacity_source": "x", "declared_capacity_bytes": 100, '
+        '"actual_read_bytes": 50}'
+    )
+    data = _base_data(
+        output_format="e01",
+        match_result="matched",
+        write_block_method="software",
+        capacity_notes=notes,
+        optical_info={
+            "media_type": "dvd",
+            "file_system": "udf",
+            "sector_size": 2048,
+            "capacity_bytes": 1000,
+            "capacity_source": "ioctl",
+            "track_count": 1,
+        },
+        rfc3161={"has_timestamp": True, "tsa_url": "http://example.com/tsa"},
+        ewfinfo={
+            "success": True,
+            "version": "1.0",
+            "sections": {"sec1": {"k1": "v1"}},
+        },
+        copy_guard_type="CSS",
+        copy_guard_detail="detail text",
+    )
+    svc = ReportService()
+    with patch.object(svc, "_collect_report_data", return_value=data):
+        path = svc.generate_pdf("jid")
+    assert Path(path).is_file()
+    assert path.endswith(".pdf")
+
+
+@patch("src.services.report_service.get_config")
+def test_generate_pdf_mismatch_and_wb_none(mock_cfg, tmp_path):
+    from pathlib import Path
+
+    from src.services.report_service import ReportService
+
+    mock_cfg.return_value = MagicMock(reports_dir=tmp_path / "rep2")
+    data = _base_data(
+        match_result="mismatched",
+        write_block_method="none",
+        source_hashes={"md5": "x", "sha256": "y"},
+        verify_hashes={"md5": "a", "sha256": "b"},
+    )
+    svc = ReportService()
+    with patch.object(svc, "_collect_report_data", return_value=data):
+        path = svc.generate_pdf("jid2")
+    assert Path(path).is_file()
+
+
+@pytest.mark.parametrize(
+    "wb",
+    ("both", "hardware", "software", "none"),
+)
+@patch("src.services.report_service.get_config")
+def test_generate_html_write_block_variants(mock_cfg, tmp_path, wb):
+    from pathlib import Path
+
+    from src.services.report_service import ReportService
+
+    mock_cfg.return_value = MagicMock(reports_dir=tmp_path / f"html_{wb}")
+    data = _base_data(write_block_method=wb)
+    svc = ReportService()
+    with patch.object(svc, "_collect_report_data", return_value=data):
+        path = svc.generate_html(f"job-{wb}")
+    text = Path(path).read_text(encoding="utf-8")
+    assert "書き込み保護" in text
+
+
+@patch("src.services.report_service.get_config")
+def test_generate_pdf_write_block_both(mock_cfg, tmp_path):
+    from pathlib import Path
+
+    from src.services.report_service import ReportService
+
+    mock_cfg.return_value = MagicMock(reports_dir=tmp_path / "pdf_wb")
+    data = _base_data(write_block_method="both")
+    svc = ReportService()
+    with patch.object(svc, "_collect_report_data", return_value=data):
+        path = svc.generate_pdf("jwbb")
+    assert Path(path).is_file()

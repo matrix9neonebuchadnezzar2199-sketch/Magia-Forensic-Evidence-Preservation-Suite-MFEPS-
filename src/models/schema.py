@@ -34,6 +34,7 @@ class User(Base):
     password_hash = Column(String(255), nullable=False)
     display_name = Column(String(200), default="")
     role = Column(String(20), default="examiner")  # admin / examiner / viewer
+    is_active = Column(Boolean, default=True)
     created_at = Column(DateTime, default=_utcnow)
     last_login_at = Column(DateTime, nullable=True)
 

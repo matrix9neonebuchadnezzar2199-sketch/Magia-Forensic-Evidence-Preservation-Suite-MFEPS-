@@ -18,7 +18,7 @@ logger = logging.getLogger("mfeps.database")
 _engine = None
 _session_factory = None
 
-_SCHEMA_VERSION = 6  # Phase 6 時点
+_SCHEMA_VERSION = 7  # Phase 8: users.is_active
 
 
 def _ensure_schema_version_table(engine: Engine) -> None:
@@ -155,6 +155,20 @@ def _migration_6_noop(_engine: Engine) -> None:
     pass
 
 
+def _migration_7_users_is_active(engine: Engine) -> None:
+    with engine.connect() as conn:
+        rows = conn.execute(text("PRAGMA table_info(users)")).fetchall()
+        col_names = {r[1] for r in rows}
+        if "is_active" not in col_names:
+            conn.execute(
+                text(
+                    "ALTER TABLE users ADD COLUMN is_active BOOLEAN DEFAULT 1"
+                )
+            )
+            logger.info("マイグレーション: users.is_active を追加しました")
+        conn.commit()
+
+
 _MIGRATIONS: dict[int, Callable[[Engine], None]] = {
     1: _migration_1_imaging_write_block,
     2: _migration_2_audit_hash_timestamp,
@@ -162,6 +176,7 @@ _MIGRATIONS: dict[int, Callable[[Engine], None]] = {
     4: _migration_4_evidence_unique_index,
     5: _migration_5_e01_columns,
     6: _migration_6_noop,
+    7: _migration_7_users_is_active,
 }
 
 

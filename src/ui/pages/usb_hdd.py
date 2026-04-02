@@ -23,6 +23,7 @@ from src.ui.components.progress_panel import (
 from src.services.imaging_service import get_imaging_service
 from src.ui.session_auth import get_current_actor_name
 from src.utils.i18n import t as i18n_t
+from src.utils.rbac import require_role
 
 
 def build_usb_hdd_page():
@@ -252,6 +253,7 @@ def build_usb_hdd_page():
             with ui.stepper_navigation():
                 ui.button("← 戻る", on_click=stepper.previous).props("flat")
 
+                @require_role("examiner")
                 async def start_copy():
                     if not state["selected_device"]:
                         ui.notify("デバイスが選択されていません", type="negative")

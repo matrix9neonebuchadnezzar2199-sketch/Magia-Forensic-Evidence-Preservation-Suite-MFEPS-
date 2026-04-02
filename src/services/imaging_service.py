@@ -30,6 +30,7 @@ from src.utils.incomplete_file_reporting import (
 )
 from src.utils.rfc3161_client import RFC3161Client
 from src.utils.db_backup import create_backup
+from src.ui.session_auth import get_current_role
 
 
 def _schedule_progress_publish(job_id: str, payload: dict) -> None:
@@ -285,6 +286,26 @@ class ImagingService:
             )
 
         self._tasks[job_id] = task
+
+        from src.services.audit_service import get_audit_service
+
+        get_audit_service().add_entry(
+            level="INFO",
+            category=AuditCategories.IMAGING_START,
+            message=f"イメージングジョブ投入: {job_id}",
+            detail=json.dumps(
+                {
+                    "job_id": job_id,
+                    "actor": actor_name,
+                    "role": get_current_role(),
+                    "case": case_id,
+                    "evidence": evidence_id,
+                    "device": device.device_path,
+                    "format": output_format,
+                },
+                ensure_ascii=False,
+            ),
+        )
 
         logger.info("イメージングジョブ開始: %s (format=%s)", job_id, output_format)
         return job_id

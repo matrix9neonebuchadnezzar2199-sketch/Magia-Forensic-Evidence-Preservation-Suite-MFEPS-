@@ -11,6 +11,7 @@ from src.models.enums import AuditCategory
 from src.utils.config import get_config, reload_config
 from src.utils.user_settings import persist_user_settings_from_storage
 from src.utils.i18n import get_i18n, t as i18n_t
+from src.utils.rbac import require_role
 from src.utils.constants import (
     BUFFER_SIZE_OPTIONS,
     COLOR_INFO,
@@ -616,6 +617,7 @@ def build_settings():
             ui.label("DB ファイル:").classes("text-body2")
             ui.input(value=str(config.db_path)).props("readonly").classes("flex-grow")
 
+        @require_role("admin")
         async def on_reset_db():
             with ui.dialog() as confirm_dialog, ui.card():
                 ui.label("⚠️ 本当にデータベースを初期化しますか？").classes("text-h6")
@@ -643,6 +645,7 @@ def build_settings():
 
     # ==== 保存・リセット ====
     with ui.row().classes("justify-end q-mt-md gap-2"):
+        @require_role("admin")
         def on_reset_settings():
             stored["font_size"] = 16
             stored["theme"] = "dark"
@@ -674,6 +677,7 @@ def build_settings():
 
         ui.button("リセット", icon="restart_alt", on_click=on_reset_settings).props("flat")
 
+        @require_role("admin")
         def on_save_settings():
             cfg = get_config()
             persist_user_settings_from_storage(

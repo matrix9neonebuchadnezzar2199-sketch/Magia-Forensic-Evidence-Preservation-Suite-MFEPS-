@@ -60,7 +60,21 @@ def login_user(user_dict: dict[str, Any]) -> None:
     app.storage.user["username"] = user_dict["username"]
     app.storage.user["display_name"] = user_dict.get("display_name") or user_dict["username"]
     app.storage.user["role"] = user_dict.get("role", "examiner")
+    app.storage.user["is_active"] = bool(user_dict.get("is_active", True))
     app.storage.user["login_at"] = now.isoformat()
+
+
+def get_current_role() -> str:
+    """現在セッションのロール（未ログイン時は viewer）"""
+    try:
+        return str(app.storage.user.get("role", "viewer"))
+    except Exception:
+        return "viewer"
+
+
+def check_session_valid() -> bool:
+    """セッションが有効か（期限切れ時は clear_session 済みで False）"""
+    return is_authenticated()
 
 
 def get_current_user_id() -> str | None:
