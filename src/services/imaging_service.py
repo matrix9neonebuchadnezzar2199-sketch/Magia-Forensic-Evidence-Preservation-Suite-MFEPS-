@@ -18,6 +18,7 @@ from src.core.write_blocker import check_write_protection
 from src.models.database import session_scope
 from src.models.enums import OutputFormat
 from src.models.schema import ImagingJob, HashRecord, ChainOfCustody
+from src.utils.audit_categories import AuditCategories
 from src.utils.config import get_config
 from src.utils.constants import E01_REMAINING_PATTERN
 from src.utils.path_sanitize import sanitize_path_component
@@ -348,7 +349,7 @@ class ImagingService:
 
         audit.add_entry(
             level="INFO",
-            category="imaging",
+            category=AuditCategories.E01_START,
             message=f"E01 取得開始: {params.source_path}",
             detail=json.dumps(
                 {
@@ -368,7 +369,7 @@ class ImagingService:
 
             audit.add_entry(
                 level="INFO",
-                category="imaging",
+                category=AuditCategories.E01_COMPLETE,
                 message=(
                     f"ewfacquire 実行完了: code={e01_result.ewfacquire_return_code}"
                 ),
@@ -406,7 +407,7 @@ class ImagingService:
                     match_result = "pending"
                     audit.add_entry(
                         level="WARN",
-                        category="hash",
+                        category=AuditCategories.HASH_VERIFY,
                         message=f"E01 検証スキップ: {verify.skip_reason}",
                         detail=json.dumps({"job_id": job_id}, ensure_ascii=False),
                     )
@@ -418,7 +419,7 @@ class ImagingService:
                     }
                     audit.add_entry(
                         level="INFO",
-                        category="hash",
+                        category=AuditCategories.HASH_VERIFY,
                         message="E01 検証成功: 全ハッシュ一致",
                         detail=json.dumps(
                             {
@@ -437,7 +438,7 @@ class ImagingService:
                     }
                     audit.add_entry(
                         level="ERROR",
-                        category="hash",
+                        category=AuditCategories.HASH_MISMATCH,
                         message="E01 検証失敗: ハッシュ不一致",
                         detail=json.dumps(
                             {
@@ -522,7 +523,7 @@ class ImagingService:
         except asyncio.CancelledError:
             self._job_actors.pop(job_id, None)
             self._update_job_status(job_id, "cancelled")
-            logger.warning("E01 イメージングタスクがキャンセル: %s", job_id)
+            logger.info("E01 イメージングタスクがキャンセル: %s", job_id)
             raise
         except (OSError, IOError) as e:
             logger.error("E01 イメージング I/O エラー: %s", e, exc_info=True)
@@ -534,7 +535,7 @@ class ImagingService:
             }
             audit.add_entry(
                 level="ERROR",
-                category="imaging",
+                category=AuditCategories.E01_FAIL,
                 message=f"E01 取得 I/O 失敗: {e}",
                 detail=json.dumps({"job_id": job_id}, ensure_ascii=False),
             )
@@ -548,7 +549,7 @@ class ImagingService:
             }
             audit.add_entry(
                 level="ERROR",
-                category="imaging",
+                category=AuditCategories.E01_FAIL,
                 message=f"E01 取得失敗: {e}",
                 detail=json.dumps({"job_id": job_id}, ensure_ascii=False),
             )
@@ -570,7 +571,7 @@ class ImagingService:
         except asyncio.CancelledError:
             self._job_actors.pop(job_id, None)
             self._update_job_status(job_id, "cancelled")
-            logger.warning("イメージングタスクがキャンセルされました: %s", job_id)
+            logger.info("イメージングタスクがキャンセルされました: %s", job_id)
             raise
         except (OSError, IOError) as e:
             logger.error("イメージング I/O エラー: %s", e, exc_info=True)

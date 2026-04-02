@@ -75,6 +75,7 @@ class OpticalImagingResult(BaseModel):
     decrypt_method: Optional[str] = None
     css_scrambled: Optional[bool] = None
     aacs_mkb_version: Optional[int] = None
+    error_code: Optional[str] = None
 
 
 class OpticalMediaAnalyzer:
@@ -434,6 +435,7 @@ class OpticalImagingEngine:
                 status="failed",
                 error="メディア容量を取得できませんでした (total_sectors=0)",
                 output_path=output_path,
+                error_code="E8001",
             )
 
         handle = None
@@ -610,6 +612,7 @@ class OpticalImagingEngine:
                 status="failed",
                 error=str(e),
                 decrypt_method=decrypt_method,
+                error_code="E8002",
             )
         except Exception as e:
             logger.error("光学イメージング未知エラー: %s", e, exc_info=True)
@@ -617,6 +620,7 @@ class OpticalImagingEngine:
                 status="failed",
                 error=str(e),
                 decrypt_method=decrypt_method,
+                error_code="E8002",
             )
         finally:
             if output_file:

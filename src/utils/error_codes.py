@@ -58,6 +58,10 @@ E1004 = ErrorCode(
     "E1004", "Insufficient disk space",
     "ディスク容量が不足しています", Severity.ERROR,
     "出力先ドライブの空き容量を確認してください")
+E1005 = ErrorCode(
+    "E1005", "Output write I/O error",
+    "出力ファイルへの書込みに失敗しました", Severity.ERROR,
+    "出力先ディスクの空き容量と権限を確認してください")
 
 # ───── E2xxx: デバイス検出エラー ─────
 E2001 = ErrorCode(
@@ -76,6 +80,14 @@ E2004 = ErrorCode(
     "E2004", "Failed to get drive geometry",
     "ドライブジオメトリの取得に失敗しました", Severity.ERROR,
     "デバイスが正常に動作しているか確認してください")
+E2005 = ErrorCode(
+    "E2005", "Failed to open source device (imaging)",
+    "ソースデバイスを開けません（イメージング）", Severity.CRITICAL,
+    "管理者権限とデバイスパスを確認してください")
+E2006 = ErrorCode(
+    "E2006", "Failed to read geometry or disk length",
+    "ジオメトリまたはディスク長の取得に失敗しました", Severity.ERROR,
+    "デバイス接続とドライバを確認してください")
 
 # ───── E3xxx: イメージングエラー ─────
 E3001 = ErrorCode(
@@ -110,6 +122,10 @@ E3010 = ErrorCode(
     "E3010", "Write block verification failed",
     "ライトブロック検証に失敗しました", Severity.CRITICAL,
     "ハードウェアライトブロッカーの使用を検討してください")
+E3011 = ErrorCode(
+    "E3011", "Pause wait timeout",
+    "一時停止の待機がタイムアウトしました", Severity.WARN,
+    "ジョブの状態を確認してください")
 
 # ───── E4xxx: 光学メディアエラー ─────
 E4001 = ErrorCode(
@@ -187,16 +203,35 @@ E7006 = ErrorCode(
     "ewfverify が利用できないため検証をスキップしました", Severity.WARN,
     "ewfverify_path を設定すると自動検証が有効になります")
 
+# ───── E8xxx: 光学イメージングエラー（エンジン） ─────
+E8001 = ErrorCode(
+    "E8001", "Optical capacity zero",
+    "光学メディアの容量が 0 です", Severity.ERROR,
+    "メディア挿入とドライブ認識を確認してください")
+E8002 = ErrorCode(
+    "E8002", "Optical imaging I/O error",
+    "光学イメージング中の I/O エラー", Severity.ERROR,
+    "ディスク表面とドライブを確認してください")
+E8003 = ErrorCode(
+    "E8003", "CSS decryption failure",
+    "CSS 復号に失敗しました", Severity.ERROR,
+    "libdvdcss / pydvdcss の構成を確認してください")
+E8004 = ErrorCode(
+    "E8004", "AACS decryption failure",
+    "AACS 復号に失敗しました", Severity.ERROR,
+    "libaacs と keydb.cfg を確認してください")
+
 # 全エラーコードの辞書
 ALL_ERROR_CODES: dict[str, ErrorCode] = {
     ec.code: ec for ec in [
-        E1001, E1002, E1003, E1004,
-        E2001, E2002, E2003, E2004,
-        E3001, E3002, E3003, E3004, E3005, E3006, E3007, E3010,
+        E1001, E1002, E1003, E1004, E1005,
+        E2001, E2002, E2003, E2004, E2005, E2006,
+        E3001, E3002, E3003, E3004, E3005, E3006, E3007, E3010, E3011,
         E4001, E4002, E4003, E4004, E4005, E4006,
         E5001, E5002, E5003,
         E6001, E6002,
         E7001, E7002, E7003, E7004, E7005, E7006,
+        E8001, E8002, E8003, E8004,
     ]
 }
 
@@ -204,3 +239,23 @@ ALL_ERROR_CODES: dict[str, ErrorCode] = {
 def get_error(code: str) -> ErrorCode | None:
     """エラーコード文字列から ErrorCode オブジェクトを取得"""
     return ALL_ERROR_CODES.get(code)
+
+
+def category_for_code(code: str) -> str:
+    """先頭数字でカテゴリキーを返す（1=system, 2=device, ...）"""
+    if not code or len(code) < 2 or code[0] != "E":
+        return "unknown"
+    try:
+        n = int(code[1])
+    except ValueError:
+        return "unknown"
+    return {
+        1: "system",
+        2: "device",
+        3: "imaging",
+        4: "optical",
+        5: "hash",
+        6: "report",
+        7: "e01",
+        8: "optical_engine",
+    }.get(n, "other")

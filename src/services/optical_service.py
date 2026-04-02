@@ -18,6 +18,7 @@ from src.core.write_blocker import check_write_protection
 from src.models.database import session_scope
 from src.models.schema import ChainOfCustody, HashRecord, ImagingJob
 from src.services.audit_service import get_audit_service
+from src.utils.audit_categories import AuditCategories
 from src.utils.config import get_config
 from src.utils.incomplete_file_detector import detect_incomplete_files
 from src.utils.incomplete_file_reporting import (
@@ -245,6 +246,7 @@ class OpticalService:
                         output_path,
                         source_hashes,
                         buffer_size=1 * 1024 * 1024,
+                        cancel_event=engine._cancel_event,
                         md5=hash_md5,
                         sha1=hash_sha1,
                         sha256=hash_sha256,
@@ -261,7 +263,7 @@ class OpticalService:
                         audit = get_audit_service()
                         audit.add_entry(
                             level="ERROR",
-                            category="hash",
+                            category=AuditCategories.HASH_MISMATCH,
                             message=(
                                 f"光学イメージ検証: ハッシュ不一致 job={job_id}"
                             ),
@@ -281,7 +283,7 @@ class OpticalService:
                     audit = get_audit_service()
                     audit.add_entry(
                         level="WARN",
-                        category="hash",
+                        category=AuditCategories.HASH_VERIFY,
                         message=f"光学イメージ検証失敗: {ver_e}",
                         detail=json.dumps({"job_id": job_id}, ensure_ascii=False),
                     )
@@ -413,7 +415,7 @@ class OpticalService:
                 audit = get_audit_service()
                 audit.add_entry(
                     level="INFO",
-                    category="imaging",
+                    category=AuditCategories.DECRYPT_USED,
                     message=(
                         f"光学イメージング（復号）: "
                         f"job={job_id}, status={status}"
@@ -434,7 +436,7 @@ class OpticalService:
         except asyncio.CancelledError:
             self._update_job_status(job_id, "cancelled")
             self._progress[job_id]["status"] = "cancelled"
-            logger.warning("光学イメージングがキャンセル: %s", job_id)
+            logger.info("光学イメージングがキャンセル: %s", job_id)
             raise
         except (OSError, IOError) as e:
             logger.error("光学イメージング I/O エラー: %s", e, exc_info=True)

@@ -133,9 +133,13 @@ class DoubleBufferManager:
             hash_engine.update(data)
 
             # ファイル書込（非同期）
-            await asyncio.get_running_loop().run_in_executor(
-                self._write_executor, output_file.write, data
-            )
+            try:
+                await asyncio.get_running_loop().run_in_executor(
+                    self._write_executor, output_file.write, data
+                )
+            except OSError as e:
+                logger.error("出力書込みエラー: %s", e, exc_info=True)
+                raise OSError(f"[E1005] {e}") from e
 
             total_processed += len(data)
 

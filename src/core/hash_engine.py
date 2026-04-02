@@ -4,6 +4,7 @@ MD5 + SHA-1 + SHA-256（＋オプション SHA-512）ストリーミング同時
 """
 import hashlib
 import logging
+import threading
 from pathlib import Path
 from typing import Callable, Optional
 
@@ -90,6 +91,7 @@ def verify_image_hash(
     expected: dict[str, str],
     buffer_size: int = 1_048_576,
     progress_callback: Optional[Callable] = None,
+    cancel_event: Optional[threading.Event] = None,
     *,
     md5: bool = True,
     sha1: bool = True,
@@ -109,9 +111,23 @@ def verify_image_hash(
 
     with open(file_path, "rb") as f:
         while True:
+            if cancel_event is not None and cancel_event.is_set():
+                computed = engine.hexdigests()
+                return {
+                    "computed": computed,
+                    "cancelled": True,
+                    "all_match": False,
+                }
             data = f.read(buffer_size)
             if not data:
                 break
+            if cancel_event is not None and cancel_event.is_set():
+                computed = engine.hexdigests()
+                return {
+                    "computed": computed,
+                    "cancelled": True,
+                    "all_match": False,
+                }
             engine.update(data)
 
             if progress_callback:
@@ -119,7 +135,7 @@ def verify_image_hash(
 
     computed = engine.hexdigests()
 
-    result: dict = {"computed": computed}
+    result: dict = {"computed": computed, "cancelled": False}
     checks = []
     if md5 and "md5" in computed:
         result["md5_match"] = computed["md5"] == expected.get("md5", "")

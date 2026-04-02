@@ -6,6 +6,7 @@ import asyncio
 import json
 import logging
 import os
+import threading
 import time
 
 import psutil
@@ -77,6 +78,7 @@ class ImagingEngine:
     def __init__(self, buffer_size: int = 1_048_576):
         self.buffer_size = buffer_size
         self._cancel_event = asyncio.Event()
+        self._verify_thread_cancel = threading.Event()
         self._pause_event = asyncio.Event()
         self._pause_event.set()  # 初期: 実行中（非ポーズ）
         self._progress: dict = {
@@ -96,15 +98,44 @@ class ImagingEngine:
         output_file = None
         buffer_mgr: DoubleBufferManager | None = None
         result = ImagingResult(job_id=job.job_id)
+        self._verify_thread_cancel.clear()
 
         try:
             self._progress["status"] = "starting"
             logger.info(f"イメージング開始: {job.source_path}")
 
-            # 1. ソースデバイスオープン
-            handle = open_device(job.source_path)
-            geometry = get_disk_geometry(handle)
-            total_bytes = get_disk_length(handle)
+            # 1. ソースデバイスオープン → ジオメトリ → 長さ
+            try:
+                handle = open_device(job.source_path)
+            except OSError as e:
+                result.status = "failed"
+                result.error_code = "E2005"
+                result.error_message = str(e)
+                logger.error("デバイスオープン失敗: %s", e, exc_info=True)
+                return result
+
+            try:
+                geometry = get_disk_geometry(handle)
+            except OSError as e:
+                result.status = "failed"
+                result.error_code = "E2006"
+                result.error_message = str(e)
+                logger.error("ジオメトリ取得失敗: %s", e, exc_info=True)
+                close_device(handle)
+                handle = None
+                return result
+
+            try:
+                total_bytes = get_disk_length(handle)
+            except OSError as e:
+                result.status = "failed"
+                result.error_code = "E2006"
+                result.error_message = str(e)
+                logger.error("ディスク長取得失敗: %s", e, exc_info=True)
+                close_device(handle)
+                handle = None
+                return result
+
             sector_size = geometry["bytes_per_sector"]
 
             result.total_bytes = total_bytes
@@ -231,13 +262,16 @@ class ImagingEngine:
                 self._progress["status"] = "verifying"
                 logger.info("イメージ検証（再ハッシュ）開始...")
 
+                ve = self._verify_thread_cancel
                 verify_result = await asyncio.get_running_loop().run_in_executor(
                     None,
                     lambda: verify_image_hash(
-                        output_path, result.source_hashes,
+                        output_path,
+                        result.source_hashes,
                         buffer_size=job.buffer_size,
                         progress_callback=lambda p, t: self._progress.update(
                             {"copied_bytes": p, "total_bytes": t}),
+                        cancel_event=ve,
                         md5=job.hash_md5,
                         sha1=job.hash_sha1,
                         sha256=job.hash_sha256,
@@ -246,22 +280,35 @@ class ImagingEngine:
                 )
 
                 result.verify_hashes = verify_result["computed"]
-                result.match_result = (
-                    "matched" if verify_result["all_match"] else "mismatched")
-
-                if verify_result["all_match"]:
-                    logger.info("✅ イメージ検証: 全ハッシュ一致")
-                else:
-                    logger.error("❌ イメージ検証: ハッシュ不一致")
-                    result.error_code = "E5002"
-                    result.error_message = "ソースとイメージのハッシュが一致しません"
-
-                if self._cancel_event.is_set():
+                if verify_result.get("cancelled"):
                     result.status = "cancelled"
                     result.error_code = "E3006"
                     result.error_message = "ユーザーによりキャンセルされました"
+                    result.match_result = "pending"
                 else:
-                    result.status = "completed"
+                    result.match_result = (
+                        "matched"
+                        if verify_result["all_match"]
+                        else "mismatched"
+                    )
+
+                    if verify_result["all_match"]:
+                        logger.info("✅ イメージ検証: 全ハッシュ一致")
+                    else:
+                        logger.error("❌ イメージ検証: ハッシュ不一致")
+                        result.error_code = "E5002"
+                        result.error_message = (
+                            "ソースとイメージのハッシュが一致しません"
+                        )
+
+                    if self._cancel_event.is_set():
+                        result.status = "cancelled"
+                        result.error_code = "E3006"
+                        result.error_message = (
+                            "ユーザーによりキャンセルされました"
+                        )
+                    else:
+                        result.status = "completed"
             else:
                 result.status = "completed"
 
@@ -269,12 +316,13 @@ class ImagingEngine:
             result.status = "cancelled"
             result.error_code = "E3006"
             result.error_message = "イメージングがキャンセルされました"
-            logger.warning("イメージング: CancelledError")
+            logger.info("イメージング: CancelledError")
             raise
         except (OSError, IOError) as e:
             result.status = "failed"
             result.error_message = str(e)
-            result.error_code = "E1003"
+            es = str(e)
+            result.error_code = "E1005" if "[E1005]" in es else "E1003"
             logger.error("イメージング I/O エラー: %s", e, exc_info=True)
         except Exception as e:
             result.status = "failed"
@@ -341,6 +389,7 @@ class ImagingEngine:
     async def cancel(self) -> None:
         """イメージングをキャンセル"""
         self._cancel_event.set()
+        self._verify_thread_cancel.set()
         logger.info("イメージングキャンセル要求")
 
     async def pause(self) -> None:
