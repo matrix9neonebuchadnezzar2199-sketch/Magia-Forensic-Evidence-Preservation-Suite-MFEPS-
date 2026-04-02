@@ -138,3 +138,28 @@ def test_priority_ordering():
             await q.aclose()
 
     asyncio.run(_run())
+
+
+def test_max_concurrent_property():
+    jq = JobQueue(max_concurrent=4)
+    assert jq.max_concurrent == 4
+
+
+def test_job_coroutine_raises():
+    async def _run():
+        jq = JobQueue(max_concurrent=1)
+        try:
+
+            async def boom():
+                raise ValueError("boom-msg")
+
+            _, t = await jq.submit("err", boom)
+            await t
+            st = jq.get_status("err")
+            assert st is not None
+            assert st["status"] == QueuedJobStatus.FAILED.value
+            assert "boom-msg" in (st.get("error_message") or "")
+        finally:
+            await jq.aclose()
+
+    asyncio.run(_run())

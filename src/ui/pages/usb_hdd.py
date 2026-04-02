@@ -522,6 +522,25 @@ def build_usb_hdd_page():
                     color="primary",
                     on_click=generate_pdf,
                 ).props("unelevated")
+
+                async def export_zip():
+                    if not state.get("job_id"):
+                        ui.notify("ジョブIDがありません", type="warning")
+                        return
+                    try:
+                        from src.services.export_service import ExportService
+
+                        svc = ExportService()
+                        path = svc.export_job(state["job_id"])
+                        ui.notify(f"エクスポート完了: {path}", type="positive")
+                    except Exception as e:
+                        ui.notify(f"エクスポート失敗: {e}", type="negative")
+
+                ui.button(
+                    "📦 エクスポート",
+                    icon="archive",
+                    on_click=export_zip,
+                ).props("outline")
                 ui.button(
                     "📋 CoC追加",
                     icon="link",

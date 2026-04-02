@@ -16,6 +16,7 @@ _ROLE_HIERARCHY = {"admin": 3, "examiner": 2, "viewer": 1}
 
 PAGE_PERMISSIONS = {
     "/": "viewer",
+    "/cases": "viewer",
     "/usb-hdd": "examiner",
     "/optical": "examiner",
     "/hash-verify": "examiner",
