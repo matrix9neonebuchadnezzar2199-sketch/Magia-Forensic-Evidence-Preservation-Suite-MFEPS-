@@ -5,6 +5,20 @@ All notable changes to MFEPS will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.3.0] - 2026-04-02
+
+### Added
+- **ダッシュボード統計 (Phase 9)**: `stats_service.py` — 日別ジョブ数・スループット・出力形式分布・エラー率集計
+- **グラフ表示**: `dashboard.py` — Apache ECharts (`ui.echart`) でジョブ推移・スループット・形式分布
+- **ライトテーマ**: `src/ui/theme/light_theme.py`、レイアウト／設定でのダーク・ライト切替
+- **ケース管理 UI**: `src/ui/pages/cases.py`、`/cases` ルート、RBAC（viewer 以上）、サイドバー導線
+- **ZIP エクスポート**: `export_service.py` — 完了ジョブのイメージ・ハッシュ・CoC・HTML 報告等を1パッケージ化（USB/HDD・光学リザルト）
+- 単体テスト追加（stats / export / cases データ層 / カバレッジ補強一式）
+
+### Changed
+- `APP_VERSION` を **2.3.0** に更新（`constants.py`）
+- CI: `pytest-cov` の `--cov-fail-under` を **75%** に引き上げ（`.github/workflows/ci.yml`）
+
 ## [2.1.1] - 2026-04-01
 
 ### Added

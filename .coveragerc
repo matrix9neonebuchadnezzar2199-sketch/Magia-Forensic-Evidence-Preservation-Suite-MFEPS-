@@ -1,3 +1,4 @@
+# MFEPS バックエンド coverage 設定（Phase 9: CI pytest-cov ゲート 75%）
 # WebUI / エントリポイントは別途 E2E 対象。バックエンド品質ゲート用に集計から除外。
 [run]
 source = src
