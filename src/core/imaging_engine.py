@@ -93,6 +93,7 @@ class ImagingEngine:
         start_time = time.time()
         handle = None
         output_file = None
+        buffer_mgr: DoubleBufferManager | None = None
         result = ImagingResult(job_id=job.job_id)
 
         try:
@@ -139,7 +140,8 @@ class ImagingEngine:
             # 4. イメージングパイプライン
             self._progress["status"] = "imaging"
             buffer_mgr = DoubleBufferManager(
-                buffer_size=job.buffer_size, sector_size=sector_size)
+                buffer_size=job.buffer_size, sector_size=sector_size
+            )
             hash_engine = TripleHashEngine(
                 md5=job.hash_md5,
                 sha1=job.hash_sha1,
@@ -262,12 +264,25 @@ class ImagingEngine:
             else:
                 result.status = "completed"
 
-        except Exception as e:
+        except asyncio.CancelledError:
+            result.status = "cancelled"
+            result.error_code = "E3006"
+            result.error_message = "イメージングがキャンセルされました"
+            logger.warning("イメージング: CancelledError")
+            raise
+        except (OSError, IOError) as e:
             result.status = "failed"
             result.error_message = str(e)
-            logger.error(f"イメージングエラー: {e}")
+            result.error_code = "E1003"
+            logger.error("イメージング I/O エラー: %s", e, exc_info=True)
+        except Exception as e:
+            result.status = "failed"
+            result.error_message = f"予期せぬエラー: {e}"
+            logger.error("イメージング未知エラー: %s", e, exc_info=True)
 
         finally:
+            if buffer_mgr is not None:
+                buffer_mgr.shutdown()
             if output_file:
                 output_file.close()
             if handle and handle != -1:

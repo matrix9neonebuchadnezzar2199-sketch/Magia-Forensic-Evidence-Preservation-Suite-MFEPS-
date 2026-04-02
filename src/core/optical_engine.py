@@ -387,6 +387,27 @@ class OpticalImagingEngine:
             f"use_pydvdcss={use_pydvdcss}, use_aacs={use_aacs}"
         )
 
+        if total_sectors <= 0:
+            logger.error(
+                "光学メディア容量が 0 です: total_sectors=%d, "
+                "capacity_bytes=%s, capacity_source=%s",
+                total_sectors,
+                analysis.capacity_bytes,
+                analysis.capacity_source,
+            )
+            return {
+                "status": "failed",
+                "error": "メディア容量を取得できませんでした (total_sectors=0)",
+                "source_hashes": {},
+                "copied_bytes": 0,
+                "total_bytes": 0,
+                "error_count": 0,
+                "error_sectors": [],
+                "elapsed_seconds": 0.0,
+                "output_path": output_path,
+                "decrypt_method": None,
+            }
+
         handle = None
         output_file = None
 
@@ -555,8 +576,15 @@ class OpticalImagingEngine:
             output_file.flush()
             os.fsync(output_file.fileno())
 
+        except (OSError, IOError) as e:
+            logger.error("光学イメージング I/O エラー: %s", e, exc_info=True)
+            return {
+                "status": "failed",
+                "error": str(e),
+                "decrypt_method": decrypt_method,
+            }
         except Exception as e:
-            logger.error(f"光学イメージングエラー: {e}")
+            logger.error("光学イメージング未知エラー: %s", e, exc_info=True)
             return {
                 "status": "failed",
                 "error": str(e),

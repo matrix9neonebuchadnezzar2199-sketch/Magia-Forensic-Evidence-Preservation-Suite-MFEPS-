@@ -45,6 +45,23 @@ from src.utils.constants import (
 
 logger = logging.getLogger("mfeps.e01_writer")
 
+_CTRL_CHAR_RE = re.compile(r"[\x00-\x1f\x7f]")
+_MAX_EWF_METADATA_LEN = 200
+
+
+def _sanitize_ewf_metadata(value: str, field_name: str = "") -> str:
+    """ewfacquire メタデータ引数用: 制御文字除去 + 長さ上限"""
+    cleaned = _CTRL_CHAR_RE.sub("", value or "").strip()
+    if len(cleaned) > _MAX_EWF_METADATA_LEN:
+        logger.warning(
+            "E01 メタデータ %s を %d→%d 文字に切り詰めました",
+            field_name or "(field)",
+            len(cleaned),
+            _MAX_EWF_METADATA_LEN,
+        )
+        cleaned = cleaned[:_MAX_EWF_METADATA_LEN]
+    return cleaned
+
 
 @dataclass
 class E01Params:
@@ -338,16 +355,21 @@ class E01Writer:
             "-t",
             target_path,
         ]
-        if (params.case_number or "").strip():
-            cmd.extend(["-C", params.case_number.strip()])
-        if (params.description or "").strip():
-            cmd.extend(["-D", params.description.strip()])
-        if (params.examiner_name or "").strip():
-            cmd.extend(["-e", params.examiner_name.strip()])
-        if (params.evidence_number or "").strip():
-            cmd.extend(["-E", params.evidence_number.strip()])
-        if (params.notes or "").strip():
-            cmd.extend(["-N", params.notes.strip()])
+        cn = _sanitize_ewf_metadata(params.case_number or "", "case_number")
+        if cn:
+            cmd.extend(["-C", cn])
+        desc = _sanitize_ewf_metadata(params.description or "", "description")
+        if desc:
+            cmd.extend(["-D", desc])
+        exn = _sanitize_ewf_metadata(params.examiner_name or "", "examiner_name")
+        if exn:
+            cmd.extend(["-e", exn])
+        evn = _sanitize_ewf_metadata(params.evidence_number or "", "evidence_number")
+        if evn:
+            cmd.extend(["-E", evn])
+        nt = _sanitize_ewf_metadata(params.notes or "", "notes")
+        if nt:
+            cmd.extend(["-N", nt])
         cmd.extend(
             [
                 "-f",
@@ -514,6 +536,10 @@ class E01Writer:
             result.error_code = "E3006"
             result.error_message = "ユーザーによりキャンセルされました"
             raise
+        except (OSError, IOError) as e:
+            result.error_code = "E7002"
+            result.error_message = str(e)
+            logger.error("E01 取得 I/O エラー: %s", e, exc_info=True)
         except Exception as e:
             result.error_code = "E7002"
             result.error_message = str(e)
@@ -701,16 +727,20 @@ class E01Writer:
             if parse_progress:
                 self._parse_progress_line(line)
 
-        while True:
-            chunk = await stream.read(4096)
-            if not chunk:
-                flush_line()
-                break
-            for ch in chunk:
-                if ch in (0x0D, 0x0A):
+        try:
+            while True:
+                chunk = await stream.read(4096)
+                if not chunk:
                     flush_line()
-                else:
-                    line_buf.append(ch)
+                    break
+                for ch in chunk:
+                    if ch in (0x0D, 0x0A):
+                        flush_line()
+                    else:
+                        line_buf.append(ch)
+        except (ConnectionResetError, BrokenPipeError, OSError) as e:
+            logger.debug("ewfacquire ストリーム読取終了: %s", e)
+            flush_line()
 
     def _emit_progress(self) -> None:
         if self._progress_callback:

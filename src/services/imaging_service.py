@@ -507,6 +507,25 @@ class ImagingService:
 
             await self.on_imaging_complete(imaging_result)
 
+        except asyncio.CancelledError:
+            self._job_actors.pop(job_id, None)
+            self._update_job_status(job_id, "cancelled")
+            logger.warning("E01 イメージングタスクがキャンセル: %s", job_id)
+            raise
+        except (OSError, IOError) as e:
+            logger.error("E01 イメージング I/O エラー: %s", e, exc_info=True)
+            self._job_actors.pop(job_id, None)
+            self._update_job_status(job_id, "failed")
+            self._results[job_id] = {
+                "status": "failed",
+                "error_message": str(e),
+            }
+            audit.add_entry(
+                level="ERROR",
+                category="imaging",
+                message=f"E01 取得 I/O 失敗: {e}",
+                detail=json.dumps({"job_id": job_id}, ensure_ascii=False),
+            )
         except Exception as e:
             logger.error("E01 イメージングタスクエラー: %s", e, exc_info=True)
             self._job_actors.pop(job_id, None)
@@ -536,8 +555,21 @@ class ImagingService:
         try:
             result = await engine.execute(params)
             await self.on_imaging_complete(result)
+        except asyncio.CancelledError:
+            self._job_actors.pop(job_id, None)
+            self._update_job_status(job_id, "cancelled")
+            logger.warning("イメージングタスクがキャンセルされました: %s", job_id)
+            raise
+        except (OSError, IOError) as e:
+            logger.error("イメージング I/O エラー: %s", e, exc_info=True)
+            self._job_actors.pop(job_id, None)
+            self._update_job_status(job_id, "failed")
+            self._results[job_id] = {
+                "status": "failed",
+                "error_message": str(e),
+            }
         except Exception as e:
-            logger.error(f"イメージングタスクエラー: {e}")
+            logger.error("イメージングタスクエラー: %s", e, exc_info=True)
             self._job_actors.pop(job_id, None)
             self._update_job_status(job_id, "failed")
             self._results[job_id] = {

@@ -3,8 +3,10 @@ MFEPS v2.1.0 — ダブルバッファリング管理
 読取と処理（ハッシュ+書込）をオーバーラップさせてスループット最大化
 """
 import asyncio
+import concurrent.futures
 import ctypes
 import logging
+import sys
 from typing import Callable, Optional
 
 logger = logging.getLogger("mfeps.buffer_manager")
@@ -30,6 +32,12 @@ class DoubleBufferManager:
         self._queue: asyncio.Queue = asyncio.Queue(maxsize=2)
         self._error_count = 0
         self._error_sectors: list[int] = []
+        self._read_executor = concurrent.futures.ThreadPoolExecutor(
+            max_workers=1, thread_name_prefix="mfeps-read"
+        )
+        self._write_executor = concurrent.futures.ThreadPoolExecutor(
+            max_workers=1, thread_name_prefix="mfeps-write"
+        )
 
         logger.info(
             f"ダブルバッファ初期化: size={buffer_size}, sector={sector_size}")
@@ -70,7 +78,7 @@ class DoubleBufferManager:
             try:
                 buf = self._buffer_a if use_a else self._buffer_b
                 data = await asyncio.get_running_loop().run_in_executor(
-                    None, read_func, offset, read_size, buf,
+                    self._read_executor, read_func, offset, read_size, buf,
                 )
                 if not data:
                     break
@@ -126,7 +134,7 @@ class DoubleBufferManager:
 
             # ファイル書込（非同期）
             await asyncio.get_running_loop().run_in_executor(
-                None, output_file.write, data
+                self._write_executor, output_file.write, data
             )
 
             total_processed += len(data)
@@ -154,3 +162,11 @@ class DoubleBufferManager:
         self._error_count = 0
         self._error_sectors.clear()
         self._queue = asyncio.Queue(maxsize=2)
+
+    def shutdown(self) -> None:
+        """既定スレッドプール枯渇を避けるため専用 Executor を終了"""
+        _kw: dict = {"wait": False}
+        if sys.version_info >= (3, 9):
+            _kw["cancel_futures"] = True
+        self._read_executor.shutdown(**_kw)
+        self._write_executor.shutdown(**_kw)
