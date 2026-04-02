@@ -1,13 +1,15 @@
 """
-MFEPS v2.1.0 — USB/HDD ウィザードページ
+MFEPS v2.2.0 — USB/HDD ウィザードページ
 4段階ウィザード: ドライブ選択 → プリスキャン → コピー実行 → リザルト
 """
 import asyncio
 import logging
+import sys
 
 from nicegui import ui, app
 
 logger = logging.getLogger("mfeps.ui.usb_hdd")
+
 from src.core.device_detector import detect_block_devices, DeviceInfo
 from src.utils.format_helpers import format_capacity
 from src.core.write_blocker import check_write_protection
@@ -20,11 +22,12 @@ from src.ui.components.progress_panel import (
 )
 from src.services.imaging_service import get_imaging_service
 from src.ui.session_auth import get_current_actor_name
+from src.utils.i18n import t as i18n_t
 
 
 def build_usb_hdd_page():
     """USB/HDDイメージング ウィザード"""
-    ui.label("💾 USB・HDD イメージング").classes("text-h5 text-weight-bold q-mb-md")
+    ui.label(i18n_t("usb_hdd.title")).classes("text-h5 text-weight-bold q-mb-md")
 
 
     # 状態管理
@@ -40,32 +43,67 @@ def build_usb_hdd_page():
     with ui.stepper().classes("full-width").props("vertical animated") as stepper:
 
         # ===== STEP 1: ドライブ選択 =====
-        with ui.step("ドライブ選択", icon="usb"):
-            ui.label("接続中のデバイスから対象を選択してください").classes("text-body2 text-grey-5 q-mb-md")
+        with ui.step(i18n_t("usb_hdd.step1_title"), icon="usb"):
+            ui.label(i18n_t("usb_hdd.step1_desc")).classes(
+                "text-body2 text-grey-5 q-mb-md"
+            )
 
             async def refresh_devices():
                 device_container.clear()
                 state["selected_device"] = None
                 if state.get("step1_next_btn"):
                     state["step1_next_btn"].disable()
-                status_label.text = "🔍 デバイス検出中..."
+                status_label.text = i18n_t("usb_hdd.detecting")
 
                 devices = await asyncio.get_running_loop().run_in_executor(
                     None, detect_block_devices)
 
-                status_label.text = f"✅ {len(devices)} 台のデバイスが検出されました"
+                status_label.text = i18n_t(
+                    "usb_hdd.detected", count=len(devices)
+                )
 
                 with device_container:
                     for dev in devices:
                         _render_device_option(dev, state, stepper)
 
             # 一覧・次への直前に置かない（誤タップ防止）。説明文の直下。
-            ui.button("🔄 デバイス検出", on_click=refresh_devices, color="primary").props(
-                "unelevated"
-            ).classes("q-mb-md")
+            ui.button(
+                i18n_t("usb_hdd.detect_btn"),
+                on_click=refresh_devices,
+                color="primary",
+            ).props("unelevated").classes("q-mb-md")
 
             device_container = ui.column().classes("full-width gap-2")
             status_label = ui.label("").classes("text-caption text-grey-6")
+
+            def _on_device_event(event_type: str, info: dict) -> None:
+                loop = app.storage.general.get("_nicegui_loop")
+                if not loop or not loop.is_running():
+                    return
+                drive = info.get("drive_name", "")
+
+                async def _hotplug_ui():
+                    if event_type == "arrival":
+                        ui.notify(
+                            i18n_t("usb_hdd.hotplug_in", drive=drive),
+                            type="info",
+                        )
+                    else:
+                        ui.notify(
+                            i18n_t("usb_hdd.hotplug_out", drive=drive),
+                            type="warning",
+                        )
+                    await refresh_devices()
+
+                try:
+                    asyncio.run_coroutine_threadsafe(_hotplug_ui(), loop)
+                except Exception:
+                    logger.debug("hotplug schedule failed", exc_info=True)
+
+            if sys.platform == "win32":
+                from src.core.device_watcher import get_device_watcher
+
+                get_device_watcher().subscribe(_on_device_event)
 
             with ui.stepper_navigation():
                 async def on_step1_next():

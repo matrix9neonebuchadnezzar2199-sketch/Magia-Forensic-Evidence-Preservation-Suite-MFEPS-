@@ -6,7 +6,7 @@ import re
 # アプリケーション情報
 APP_NAME = "MFEPS"
 APP_FULL_NAME = "Magia Forensic Evidence Preservation Suite"
-APP_VERSION = "2.1.0"
+APP_VERSION = "2.2.0"
 APP_TITLE = f"{APP_NAME} — Forensic Evidence Preservation Suite v{APP_VERSION}"
 
 # デフォルト設定値

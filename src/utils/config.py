@@ -1,8 +1,9 @@
 """
-MFEPS v2.1.0 — 設定管理
+MFEPS v2.2.0 — 設定管理
 .env ファイルからの読込 + Pydantic バリデーション
 """
 import os
+import sys
 import threading
 from pathlib import Path
 from pydantic_settings import BaseSettings
@@ -10,7 +11,9 @@ from pydantic import Field
 
 
 def _get_base_dir() -> Path:
-    """mfeps/ ディレクトリのルートパスを取得"""
+    """プロジェクトルート（PyInstaller では exe 配置ディレクトリ）"""
+    if getattr(sys, "frozen", False):
+        return Path(sys.executable).resolve().parent
     return Path(__file__).resolve().parent.parent.parent
 
 
@@ -115,6 +118,22 @@ class MFEPSConfig(BaseSettings):
     e01_ewf_format: str = Field(
         default="encase6",
         description="EWF 出力フォーマット (encase5 / encase6 / encase7)",
+    )
+
+    # 監査ログ外部転送
+    mfeps_syslog_host: str = Field(
+        default="", description="Syslog 送信先ホスト（空で無効）"
+    )
+    mfeps_syslog_port: int = Field(default=514, ge=1, le=65535, description="Syslog ポート")
+    mfeps_syslog_proto: str = Field(
+        default="udp", description="Syslog プロトコル (udp / tcp)"
+    )
+    mfeps_audit_jsonl_enabled: bool = Field(
+        default=False, description="監査ログを JSON Lines ファイルへ追記"
+    )
+    mfeps_audit_jsonl_path: str = Field(
+        default="logs/audit_export.jsonl",
+        description="JSONL 相対パス（base_dir 基準）または絶対パス",
     )
 
     model_config = {
@@ -244,4 +263,10 @@ def reload_config() -> MFEPSConfig:
     global _config
     with _config_lock:
         _config = None
+    try:
+        from src.utils.audit_exporter import reset_audit_exporter_for_tests
+
+        reset_audit_exporter_for_tests()
+    except ImportError:
+        pass
     return get_config()

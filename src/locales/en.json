@@ -1,0 +1,79 @@
+{
+  "app": {
+    "title": "MFEPS — Forensic Evidence Preservation Suite v{version}",
+    "admin_ok": "Admin privileges: ✅ Confirmed",
+    "admin_warn": "Admin privileges: ⚠️ Not available — device access limited"
+  },
+  "dashboard": {
+    "title": "🏠 Dashboard",
+    "cases": "Total Cases",
+    "evidence": "Total Evidence",
+    "images": "Total Images",
+    "errors": "Total Error Sectors",
+    "recent_jobs": "Recent Imaging Jobs",
+    "no_jobs": "No jobs found. Start imaging from the sidebar.",
+    "disk_title": "Output Disk Capacity"
+  },
+  "usb_hdd": {
+    "title": "💾 USB / HDD Imaging",
+    "step1_title": "Drive Selection",
+    "step1_desc": "Select a target device from connected drives",
+    "detect_btn": "🔄 Detect Devices",
+    "detecting": "🔍 Detecting devices...",
+    "detected": "✅ {count} device(s) detected",
+    "step2_title": "Pre-scan & Configuration",
+    "case_number": "Case Number",
+    "evidence_number": "Evidence Number",
+    "verify_after_copy": "Verify hash after copy",
+    "output_format": "Output Format",
+    "start_copy": "▶️ Start Copy",
+    "step3_title": "Copying",
+    "step4_title": "Results",
+    "copy_complete": "✅ Copy Complete",
+    "cancelled": "⚠️ Cancelled",
+    "failed": "❌ Imaging Failed",
+    "hotplug_in": "🔌 Device connected: {drive}",
+    "hotplug_out": "⏏ Device removed: {drive}"
+  },
+  "optical": {
+    "title": "💿 CD / DVD / BD Imaging",
+    "step1_title": "Drive Selection",
+    "detect_btn": "🔄 Detect Drives",
+    "media_loaded": "Media loaded",
+    "media_not_loaded": "No media inserted"
+  },
+  "settings": {
+    "title": "⚙️ Settings",
+    "display": "Display",
+    "language": "Language",
+    "font_size": "Font Size",
+    "imaging": "Imaging",
+    "buffer_size": "Buffer Size",
+    "hash_section": "Hash",
+    "save": "Save",
+    "reset": "Reset",
+    "saved_msg": "Settings saved",
+    "audit_export": "Audit log export",
+    "syslog_host": "Syslog host (empty = disabled)",
+    "syslog_port": "Syslog port",
+    "syslog_proto": "Protocol",
+    "audit_jsonl": "Write to JSON Lines file",
+    "audit_jsonl_path": "JSONL path (relative to base directory)"
+  },
+  "report": {
+    "title": "📄 Report Management",
+    "generate_all": "Generate all job reports",
+    "open_folder": "Open reports folder",
+    "hash_section": "Hash Verification Results",
+    "stats_section": "Statistics",
+    "matched": "All hashes matched: integrity confirmed",
+    "mismatched": "Hash mismatch: integrity compromised"
+  },
+  "common": {
+    "next": "Next →",
+    "back": "← Back",
+    "cancel": "⏹ Cancel",
+    "pause": "⏸ Pause",
+    "resume": "▶ Resume"
+  }
+}

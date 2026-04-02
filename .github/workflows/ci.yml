@@ -41,7 +41,7 @@ jobs:
           --cov-config=.coveragerc
           --cov-report=xml
           --cov-report=term-missing
-          --cov-fail-under=55
+          --cov-fail-under=60
           -v
           --tb=short
         env:

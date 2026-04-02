@@ -1,5 +1,5 @@
 """
-MFEPS v2.1.0 — エントリーポイント
+MFEPS v2.2.0 — エントリーポイント
 1. 設定読込
 2. フォルダ構造確保
 3. ロギング初期化
@@ -17,7 +17,10 @@ import sys
 from pathlib import Path
 
 # パス設定（src/ をインポートルートに追加）
-BASE_DIR = Path(__file__).resolve().parent.parent
+if getattr(sys, "frozen", False):
+    BASE_DIR = Path(sys.executable).resolve().parent
+else:
+    BASE_DIR = Path(__file__).resolve().parent.parent
 if str(BASE_DIR) not in sys.path:
     sys.path.insert(0, str(BASE_DIR))
 
@@ -142,6 +145,15 @@ def main():
         app.storage.general["disk_free"] = ""
         app.storage.general["is_admin"] = _admin
         loop = asyncio.get_running_loop()
+        app.storage.general["_nicegui_loop"] = loop
+        from src.utils.i18n import get_i18n
+
+        locale = app.storage.general.get("locale", "ja")
+        get_i18n().set_locale(locale if locale in ("ja", "en") else "ja")
+        if sys.platform == "win32":
+            from src.core.device_watcher import get_device_watcher
+
+            get_device_watcher().start()
         if hasattr(loop, "set_exception_handler"):
             loop.set_exception_handler(_proactor_exception_handler)
 

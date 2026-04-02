@@ -10,6 +10,7 @@ from src.core.e01_writer import E01Writer
 from src.models.enums import AuditCategory
 from src.utils.config import get_config, reload_config
 from src.utils.user_settings import persist_user_settings_from_storage
+from src.utils.i18n import get_i18n, t as i18n_t
 from src.utils.constants import (
     BUFFER_SIZE_OPTIONS,
     COLOR_INFO,
@@ -23,7 +24,7 @@ from src.utils.constants import (
 
 def build_settings():
     """設定画面を構築"""
-    ui.label("⚙️ 設定").classes("text-h5 text-weight-bold q-mb-md")
+    ui.label(i18n_t("settings.title")).classes("text-h5 text-weight-bold q-mb-md")
 
     config = get_config()
 
@@ -119,7 +120,20 @@ def build_settings():
 
     # ==== 表示設定 ====
     with ui.card().classes("q-pa-md full-width q-mb-md"):
-        ui.label("■ 表示").classes("text-subtitle1 text-weight-bold q-mb-sm")
+        ui.label(f"■ {i18n_t('settings.display')}").classes(
+            "text-subtitle1 text-weight-bold q-mb-sm"
+        )
+
+        with ui.row().classes("items-center gap-4 q-mt-sm"):
+            ui.label(i18n_t("settings.language")).classes("text-body2")
+            ui.select(
+                options={"ja": "日本語", "en": "English"},
+                value=stored.get("locale", "ja"),
+                on_change=lambda e: (
+                    stored.update({"locale": e.sender.value}),
+                    get_i18n().set_locale(e.sender.value),
+                ),
+            ).classes("min-w-32")
 
         with ui.row().classes("items-center gap-4 full-width"):
             ui.label("フォントサイズ:").classes("text-body2")
@@ -535,6 +549,65 @@ def build_settings():
                 on_change=lambda e: stored.update({"target_size": e.sender.value})
             )
 
+    # ==== 監査ログ外部転送 ====
+    with ui.card().classes("q-pa-md full-width q-mb-md"):
+        ui.label(f"■ {i18n_t('settings.audit_export')}").classes(
+            "text-subtitle1 text-weight-bold q-mb-sm"
+        )
+        ui.separator()
+        with ui.row().classes("items-center gap-2 full-width q-mt-sm"):
+            ui.label(i18n_t("settings.syslog_host")).classes("text-body2 flex-grow")
+            ui.input(
+                value=stored.get(
+                    "syslog_host", getattr(config, "mfeps_syslog_host", "") or ""
+                ),
+                on_change=lambda e: stored.update({"syslog_host": e.sender.value}),
+            ).classes("flex-grow").props("dense")
+        with ui.row().classes("items-center gap-2 full-width q-mt-sm"):
+            ui.label(i18n_t("settings.syslog_port")).classes("text-body2")
+            ui.number(
+                value=int(
+                    stored.get("syslog_port", config.mfeps_syslog_port)
+                ),
+                min=1,
+                max=65535,
+                on_change=lambda e: stored.update(
+                    {"syslog_port": int(e.sender.value or 514)}
+                ),
+            ).classes("min-w-24")
+            ui.label(i18n_t("settings.syslog_proto")).classes("text-body2 q-ml-md")
+            ui.select(
+                options={"udp": "UDP", "tcp": "TCP"},
+                value=str(stored.get("syslog_proto", config.mfeps_syslog_proto)),
+                on_change=lambda e: stored.update(
+                    {"syslog_proto": e.sender.value}
+                ),
+            ).classes("min-w-24")
+        ui.switch(
+            i18n_t("settings.audit_jsonl"),
+            value=bool(
+                stored.get(
+                    "audit_jsonl_enabled",
+                    config.mfeps_audit_jsonl_enabled,
+                )
+            ),
+            on_change=lambda e: stored.update(
+                {"audit_jsonl_enabled": e.sender.value}
+            ),
+        ).classes("q-mt-sm")
+        with ui.row().classes("items-center gap-2 full-width q-mt-sm"):
+            ui.label(i18n_t("settings.audit_jsonl_path")).classes(
+                "text-body2 flex-grow"
+            )
+            ui.input(
+                value=stored.get(
+                    "audit_jsonl_path", config.mfeps_audit_jsonl_path
+                ),
+                on_change=lambda e: stored.update(
+                    {"audit_jsonl_path": e.sender.value}
+                ),
+            ).classes("flex-grow").props("dense")
+
     # ==== データベース管理 ====
     with ui.card().classes("q-pa-md full-width q-mb-md"):
         ui.label("■ データベース").classes("text-subtitle1 text-weight-bold q-mb-sm")
@@ -588,6 +661,13 @@ def build_settings():
             stored["e01_compression"] = "deflate:fast"
             stored["e01_segment_size"] = "1500000000"
             stored["e01_ewf_format"] = "encase6"
+            stored["locale"] = "ja"
+            stored["syslog_host"] = ""
+            stored["syslog_port"] = 514
+            stored["syslog_proto"] = "udp"
+            stored["audit_jsonl_enabled"] = False
+            stored["audit_jsonl_path"] = "logs/audit_export.jsonl"
+            get_i18n().set_locale("ja")
             ui.dark_mode(True)
             ui.run_javascript('document.body.style.fontSize = "16px"')
             ui.notify("設定をリセットしました。ページをリロードしてください。", type="info")
@@ -609,6 +689,11 @@ def build_settings():
                     "ewfacquire_path": cfg.ewfacquire_path or "",
                     "ewfverify_path": cfg.ewfverify_path or "",
                     "buffer_label": stored.get("buffer_label", "1 MiB"),
+                    "syslog_host": getattr(cfg, "mfeps_syslog_host", "") or "",
+                    "syslog_port": cfg.mfeps_syslog_port,
+                    "syslog_proto": cfg.mfeps_syslog_proto or "udp",
+                    "audit_jsonl_enabled": cfg.mfeps_audit_jsonl_enabled,
+                    "audit_jsonl_path": cfg.mfeps_audit_jsonl_path,
                 },
             )
             reload_config()

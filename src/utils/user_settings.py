@@ -63,6 +63,27 @@ def _stored_to_payload(
     buf_bytes = BUFFER_SIZE_OPTIONS.get(buf_label, 1_048_576)
 
     env_flat: dict[str, Any] = {
+        "MFEPS_SYSLOG_HOST": str(
+            stored.get("syslog_host", defaults.get("syslog_host", ""))
+        ),
+        "MFEPS_SYSLOG_PORT": int(
+            stored.get("syslog_port", defaults.get("syslog_port", 514))
+        ),
+        "MFEPS_SYSLOG_PROTO": str(
+            stored.get("syslog_proto", defaults.get("syslog_proto", "udp"))
+        ),
+        "MFEPS_AUDIT_JSONL_ENABLED": bool(
+            stored.get(
+                "audit_jsonl_enabled",
+                defaults.get("audit_jsonl_enabled", False),
+            )
+        ),
+        "MFEPS_AUDIT_JSONL_PATH": str(
+            stored.get(
+                "audit_jsonl_path",
+                defaults.get("audit_jsonl_path", "logs/audit_export.jsonl"),
+            )
+        ),
         "MFEPS_OUTPUT_DIR": stored.get(
             "output_dir", defaults.get("output_dir", "./output")
         ),
@@ -106,6 +127,12 @@ def _stored_to_payload(
         "buffer_label",
         "ffmpeg_path",
         "target_size",
+        "locale",
+        "syslog_host",
+        "syslog_port",
+        "syslog_proto",
+        "audit_jsonl_enabled",
+        "audit_jsonl_path",
     )
     ui_block = {k: stored[k] for k in ui_keys if k in stored}
 
