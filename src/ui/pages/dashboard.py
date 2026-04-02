@@ -8,8 +8,15 @@ from src.utils.constants import (
     COLOR_SUCCESS,
     COLOR_WARNING,
     COLOR_INFO,
+    COLOR_ERROR,
 )
 from src.services.dashboard_service import get_dashboard_counts, get_recent_jobs
+from src.services.stats_service import (
+    get_daily_job_counts,
+    get_throughput_history,
+    get_format_distribution,
+    get_error_rate,
+)
 
 
 def build_dashboard():
@@ -28,6 +35,87 @@ def build_dashboard():
         _stat_card("💾", "総証拠品数", n_ev, COLOR_INFO)
         _stat_card("📀", "総イメージ数", n_img, COLOR_SUCCESS)
         _stat_card("⚠️", "エラーセクタ合計", n_err, COLOR_WARNING)
+
+    # ---- 統計グラフ（Apache ECharts） ----
+    err = get_error_rate()
+    ui.label(
+        f"ジョブ成功率: {err['success_rate']}% "
+        f"（完了 {err['completed']} / 全 {err['total']}、"
+        f"エラーあり {err['with_errors']}）"
+    ).classes("text-caption text-grey-6 q-mb-sm")
+
+    ui.label("ジョブ推移 (直近30日)").classes("text-h6 q-mt-lg q-mb-sm")
+    daily = get_daily_job_counts(30)
+    if daily["dates"]:
+        ui.echart(
+            {
+                "tooltip": {"trigger": "axis"},
+                "legend": {"data": ["完了", "失敗", "キャンセル"]},
+                "xAxis": {"type": "category", "data": daily["dates"]},
+                "yAxis": {"type": "value", "name": "ジョブ数"},
+                "series": [
+                    {
+                        "name": "完了",
+                        "type": "bar",
+                        "data": daily["completed"],
+                        "itemStyle": {"color": COLOR_SUCCESS},
+                    },
+                    {
+                        "name": "失敗",
+                        "type": "bar",
+                        "data": daily["failed"],
+                        "itemStyle": {"color": COLOR_ERROR},
+                    },
+                    {
+                        "name": "キャンセル",
+                        "type": "bar",
+                        "data": daily["cancelled"],
+                        "itemStyle": {"color": COLOR_WARNING},
+                    },
+                ],
+            }
+        ).classes("full-width").style("height: 300px;")
+    else:
+        ui.label("データなし").classes("text-caption text-grey-6")
+
+    ui.label("スループット推移").classes("text-h6 q-mt-lg q-mb-sm")
+    tp = get_throughput_history(50)
+    if tp["labels"]:
+        ui.echart(
+            {
+                "tooltip": {"trigger": "axis"},
+                "xAxis": {"type": "category", "data": tp["labels"]},
+                "yAxis": {"type": "value", "name": "MiB/s"},
+                "series": [
+                    {
+                        "name": "速度",
+                        "type": "line",
+                        "data": tp["speeds"],
+                        "itemStyle": {"color": COLOR_PRIMARY},
+                    },
+                ],
+            }
+        ).classes("full-width").style("height: 250px;")
+    else:
+        ui.label("データなし").classes("text-caption text-grey-6")
+
+    fmt = get_format_distribution()
+    if fmt:
+        ui.label("出力形式分布").classes("text-h6 q-mt-lg q-mb-sm")
+        pie_data = [{"name": k.upper(), "value": v} for k, v in sorted(fmt.items())]
+        ui.echart(
+            {
+                "tooltip": {"trigger": "item"},
+                "series": [
+                    {
+                        "name": "ジョブ数",
+                        "type": "pie",
+                        "radius": "60%",
+                        "data": pie_data,
+                    }
+                ],
+            }
+        ).classes("full-width").style("height: 250px;")
 
     # ---- 最近のジョブ ----
     ui.label("最近のイメージングジョブ").classes("text-h6 q-mb-sm")

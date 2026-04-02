@@ -6,6 +6,7 @@ from nicegui import ui, app
 from src.utils.config import get_config
 from src.utils.constants import APP_VERSION
 from src.ui.theme.modern_dark import CUSTOM_CSS
+from src.ui.theme.light_theme import LIGHT_CSS
 from src.ui.session_auth import require_auth, clear_session
 from src.services.audit_service import get_audit_service
 from src.utils.rbac import check_page_access, has_permission
@@ -21,11 +22,20 @@ def create_layout(page_path: str, content_builder):
         ui.navigate.to("/")
         return
 
-    # ---------- ダークモード設定 ----------
-    ui.dark_mode(True)
-
-    # ---------- カスタムCSS注入（ページレベル） ----------
-    ui.add_head_html(f"<style>{CUSTOM_CSS}</style>")
+    # ---------- テーマ（ストレージ / 既定ダーク） ----------
+    theme = app.storage.general.get("theme", "dark")
+    if theme == "light":
+        ui.dark_mode(False)
+        ui.add_head_html(f"<style>{LIGHT_CSS}</style>")
+        ui.run_javascript(
+            'document.body.classList.add("mfeps-light")', timeout=3.0
+        )
+    else:
+        ui.dark_mode(True)
+        ui.add_head_html(f"<style>{CUSTOM_CSS}</style>")
+        ui.run_javascript(
+            'document.body.classList.remove("mfeps-light")', timeout=3.0
+        )
     cfg = get_config()
     fs = int(app.storage.general.get("font_size", cfg.mfeps_font_size))
     ui.add_head_html(
@@ -102,6 +112,12 @@ def create_layout(page_path: str, content_builder):
             "🏠 ダッシュボード",
             on_click=lambda: ui.navigate.to("/"),
             icon="dashboard"
+        ).props("flat align=left").classes("full-width q-mx-sm")
+
+        ui.button(
+            "📁 ケース管理",
+            on_click=lambda: ui.navigate.to("/cases"),
+            icon="folder",
         ).props("flat align=left").classes("full-width q-mx-sm")
 
         if has_permission("examiner"):

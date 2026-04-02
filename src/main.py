@@ -51,6 +51,7 @@ from src.ui.pages.coc import build_coc_page
 from src.ui.pages.audit import build_audit_page
 from src.ui.pages.hash_verify import build_hash_verify_page
 from src.ui.pages.admin_users import build_admin_users_page
+from src.ui.pages.cases import build_cases_page
 
 
 def is_admin() -> bool:
@@ -166,6 +167,10 @@ def main():
     @ui.page("/")
     def page_dashboard():
         create_layout("/", build_dashboard)
+
+    @ui.page("/cases")
+    def page_cases():
+        create_layout("/cases", build_cases_page)
 
     @ui.page("/settings")
     def page_settings():

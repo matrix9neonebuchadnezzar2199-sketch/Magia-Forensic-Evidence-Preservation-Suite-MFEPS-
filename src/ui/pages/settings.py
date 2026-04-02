@@ -178,8 +178,11 @@ def build_settings():
 
         with ui.row().classes("items-center gap-4 q-mt-sm"):
             ui.label("テーマ:").classes("text-body2")
-            ui.label("ダークモード").classes("text-body2 text-grey-5")
-            ui.label("（ライトモードは将来バージョンで対応予定）").classes("text-caption text-grey-7")
+            ui.select(
+                options={"dark": "ダークモード", "light": "ライトモード"},
+                value=stored.get("theme", config.mfeps_theme),
+                on_change=lambda e: stored.update({"theme": e.sender.value}),
+            ).classes("min-w-32")
 
 
     # ==== イメージング設定 ====
