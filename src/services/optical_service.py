@@ -424,8 +424,17 @@ class OpticalService:
                     ),
                 )
 
+        except asyncio.CancelledError:
+            self._update_job_status(job_id, "cancelled")
+            self._progress[job_id]["status"] = "cancelled"
+            logger.warning("光学イメージングがキャンセル: %s", job_id)
+            raise
+        except (OSError, IOError) as e:
+            logger.error("光学イメージング I/O エラー: %s", e, exc_info=True)
+            self._update_job_status(job_id, "failed")
+            self._progress[job_id]["status"] = "failed"
         except Exception as e:
-            logger.error(f"光学イメージング例外: {e}")
+            logger.error("光学イメージング例外: %s", e, exc_info=True)
             self._update_job_status(job_id, "failed")
             self._progress[job_id]["status"] = "failed"
         finally:
