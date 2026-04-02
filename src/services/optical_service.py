@@ -1,6 +1,7 @@
 import asyncio
 import json
 import logging
+import threading
 import time
 import uuid
 from datetime import datetime, timezone
@@ -8,7 +9,11 @@ from pathlib import Path
 from typing import Optional
 
 from src.core.hash_engine import verify_image_hash
-from src.core.optical_engine import OpticalAnalysisResult, OpticalImagingEngine
+from src.core.optical_engine import (
+    OpticalAnalysisResult,
+    OpticalImagingEngine,
+    OpticalImagingResult,
+)
 from src.core.write_blocker import check_write_protection
 from src.models.database import session_scope
 from src.models.schema import ChainOfCustody, HashRecord, ImagingJob
@@ -19,6 +24,7 @@ from src.utils.incomplete_file_reporting import (
     append_incomplete_files_report,
     incomplete_reason_from_job_status,
 )
+from src.utils.output_path_helpers import resolve_safe_output_path
 from src.utils.path_sanitize import sanitize_path_component
 
 logger = logging.getLogger("mfeps.optical_service")
@@ -77,7 +83,7 @@ class OpticalService:
         output_dir.mkdir(parents=True, exist_ok=True)
         
         ext = ".iso" if output_format.upper() == "ISO" else ".dd"
-        output_path = str(output_dir / f"image{ext}")
+        output_path = str(resolve_safe_output_path(output_dir, "image", ext))
 
         wb_status = check_write_protection(drive_path)
         if wb_status["hardware_blocked"] and wb_status["registry_blocked"]:
@@ -194,9 +200,9 @@ class OpticalService:
         self._update_job_status(job_id, "imaging", started_at=start_time)
         self._progress[job_id]["status"] = "imaging"
 
-        result_dict = {}
+        img_result = OpticalImagingResult()
         try:
-            result_dict = await engine.image_optical(
+            img_result = await engine.image_optical(
                 drive_path=drive_path,
                 output_path=output_path,
                 analysis=analysis,
@@ -210,23 +216,23 @@ class OpticalService:
                 pydvdcss_open_path=pydvdcss_open_path,
             )
 
-            status = result_dict.get("status", "completed")
-            copied_bytes = int(result_dict.get("copied_bytes", 0) or 0)
+            status = img_result.status
+            copied_bytes = int(img_result.copied_bytes or 0)
             total_bytes = int(
-                result_dict.get("total_bytes", 0) or analysis.capacity_bytes or 0
+                img_result.total_bytes or analysis.capacity_bytes or 0
             )
             # 完了時は見た目/レポート整合を優先して total に揃える（99.9% 止まり対策）
             if status == "completed" and total_bytes > 0:
                 copied_bytes = total_bytes
-            elapsed_seconds = result_dict.get("elapsed_seconds", 0)
-            decrypt_method = result_dict.get("decrypt_method")
+            elapsed_seconds = img_result.elapsed_seconds
+            decrypt_method = img_result.decrypt_method
             avg_speed_mibps = (
                 (copied_bytes / (1024 * 1024)) / elapsed_seconds
                 if elapsed_seconds > 0
                 else 0
             )
 
-            source_hashes = result_dict.get("source_hashes") or {}
+            source_hashes = dict(img_result.source_hashes)
             verify_hashes: dict = {}
             match_result = "pending"
 
@@ -287,7 +293,12 @@ class OpticalService:
             if status in ("cancelled", "failed"):
                 incomplete_records = detect_incomplete_files(
                     str(Path(output_path).parent),
-                    ["image.iso", "image.dd"],
+                    [
+                        "image*.iso",
+                        "image*.dd",
+                        "image.iso",
+                        "image.dd",
+                    ],
                 )
 
             self._progress[job_id].update({
@@ -297,8 +308,8 @@ class OpticalService:
                 "match_result": match_result,
                 "copied_bytes": copied_bytes,
                 "total_bytes": total_bytes,
-                "error_count": result_dict.get("error_count", 0),
-                "error_sectors": result_dict.get("error_sectors", []),
+                "error_count": img_result.error_count,
+                "error_sectors": list(img_result.error_sectors),
                 "decrypt_method": decrypt_method,
                 "incomplete_files": incomplete_records,
             })
@@ -310,7 +321,7 @@ class OpticalService:
                         job.status = status
                         job.total_bytes = total_bytes
                         job.copied_bytes = copied_bytes
-                        job.error_count = result_dict.get("error_count", 0)
+                        job.error_count = img_result.error_count
                         job.completed_at = datetime.now(timezone.utc)
                         job.elapsed_seconds = elapsed_seconds
                         job.avg_speed_mbps = avg_speed_mibps
@@ -344,12 +355,8 @@ class OpticalService:
                                     "media_type": analysis.media_type,
                                     "css_decrypt_requested": use_pydvdcss,
                                     "aacs_decrypt_requested": use_aacs,
-                                    "css_scrambled_media": result_dict.get(
-                                        "css_scrambled"
-                                    ),
-                                    "aacs_mkb_version": result_dict.get(
-                                        "aacs_mkb_version"
-                                    ),
+                                    "css_scrambled_media": img_result.css_scrambled,
+                                    "aacs_mkb_version": img_result.aacs_mkb_version,
                                 },
                                 ensure_ascii=False,
                             )
@@ -394,9 +401,9 @@ class OpticalService:
                                 f"{decrypt_note}"
                             ),
                             hash_snapshot=json.dumps(
-                            result_dict.get("source_hashes") or {},
-                            ensure_ascii=False,
-                        ),
+                                img_result.source_hashes,
+                                ensure_ascii=False,
+                            ),
                         )
                         session.add(coc)
             except Exception as db_e:
@@ -418,7 +425,7 @@ class OpticalService:
                             "drive_path": drive_path,
                             "status": status,
                             "copied_bytes": copied_bytes,
-                            "error_count": result_dict.get("error_count", 0),
+                            "error_count": img_result.error_count,
                         },
                         ensure_ascii=False,
                     ),
@@ -473,9 +480,14 @@ class OpticalService:
             await engine.resume()
 
 _optical_service: Optional[OpticalService] = None
+_optical_service_lock = threading.Lock()
+
 
 def get_optical_service() -> OpticalService:
     global _optical_service
-    if _optical_service is None:
-        _optical_service = OpticalService()
+    if _optical_service is not None:
+        return _optical_service
+    with _optical_service_lock:
+        if _optical_service is None:
+            _optical_service = OpticalService()
     return _optical_service

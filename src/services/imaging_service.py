@@ -5,8 +5,10 @@ UIとイメージングエンジンを仲介するオーケストレータ
 import asyncio
 import json
 import logging
+import threading
 import uuid
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Optional, Callable
 
 from src.core.imaging_engine import ImagingEngine, ImagingJobParams, ImagingResult
@@ -19,6 +21,7 @@ from src.models.schema import ImagingJob, HashRecord, ChainOfCustody
 from src.utils.config import get_config
 from src.utils.constants import E01_REMAINING_PATTERN
 from src.utils.path_sanitize import sanitize_path_component
+from src.utils.output_path_helpers import resolve_safe_output_path
 from src.utils.storage_helpers import get_general_storage
 from src.utils.incomplete_file_reporting import (
     append_incomplete_files_report,
@@ -152,7 +155,10 @@ class ImagingService:
 
         _stored = get_general_storage()
 
-        out_name = "image.E01" if output_format == OutputFormat.E01.value else "image.dd"
+        if output_format == OutputFormat.E01.value:
+            out_path = resolve_safe_output_path(output_dir, "image", ".E01")
+        else:
+            out_path = resolve_safe_output_path(output_dir, "image", ".dd")
         comp_str = ""
         seg_for_db = config.e01_segment_size_bytes
         ewf_for_db = config.e01_ewf_format
@@ -177,7 +183,7 @@ class ImagingService:
                     evidence_id=real_evidence_id,
                     status="pending",
                     source_path=device.device_path,
-                    output_path=str(output_dir / out_name),
+                    output_path=str(out_path),
                     output_format=output_format,
                     total_bytes=device.capacity_bytes,
                     buffer_size=config.mfeps_buffer_size,
@@ -312,10 +318,16 @@ class ImagingService:
 
         ewf_fmt = _stored.get("e01_ewf_format", config.e01_ewf_format)
 
+        output_stem = "image"
+        with session_scope() as session:
+            dbj = session.get(ImagingJob, job_id)
+            if dbj and dbj.output_path:
+                output_stem = Path(dbj.output_path).stem
+
         e01_params = E01Params(
             source_path=params.source_path,
             output_dir=params.output_dir,
-            output_basename="image",
+            output_basename=output_stem,
             case_number=params.case_number_str,
             evidence_number=params.evidence_number_str,
             examiner_name=e01_examiner_name,
@@ -789,10 +801,14 @@ class ImagingService:
 
 # シングルトン
 _imaging_service: Optional[ImagingService] = None
+_imaging_service_lock = threading.Lock()
 
 
 def get_imaging_service() -> ImagingService:
     global _imaging_service
-    if _imaging_service is None:
-        _imaging_service = ImagingService()
+    if _imaging_service is not None:
+        return _imaging_service
+    with _imaging_service_lock:
+        if _imaging_service is None:
+            _imaging_service = ImagingService()
     return _imaging_service

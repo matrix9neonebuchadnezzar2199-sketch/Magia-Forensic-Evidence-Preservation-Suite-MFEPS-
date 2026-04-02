@@ -22,6 +22,7 @@ from src.core.win32_raw_io import (
 )
 from src.core.write_blocker import verify_write_block
 from src.utils.incomplete_file_detector import detect_incomplete_files
+from src.utils.output_path_helpers import resolve_safe_output_path
 
 logger = logging.getLogger("mfeps.imaging_engine")
 
@@ -121,7 +122,7 @@ class ImagingEngine:
             # 3. 出力ファイル作成
             output_dir = Path(job.output_dir)
             output_dir.mkdir(parents=True, exist_ok=True)
-            output_path = output_dir / f"image.dd"
+            output_path = resolve_safe_output_path(output_dir, "image", ".dd")
             result.output_path = str(output_path)
 
             # 出力先容量チェック
@@ -304,7 +305,8 @@ class ImagingEngine:
 
             if result.status in ("cancelled", "failed"):
                 entries = detect_incomplete_files(
-                    str(Path(job.output_dir)), ["image.dd"]
+                    str(Path(job.output_dir)),
+                    ["image*.dd", "image.dd"],
                 )
                 result.incomplete_file_records = entries
                 result.incomplete_files = [e["path"] for e in entries]
@@ -323,6 +325,10 @@ class ImagingEngine:
                 logger.info(f"エラーマップ保存: {error_map_path}")
 
         return result
+
+    async def run(self, job: ImagingJobParams) -> ImagingResult:
+        """メインイメージングフロー（execute のエイリアス）"""
+        return await self.execute(job)
 
     def set_progress_callback(self, callback: Callable) -> None:
         """進捗コールバック設定（UI更新用）"""

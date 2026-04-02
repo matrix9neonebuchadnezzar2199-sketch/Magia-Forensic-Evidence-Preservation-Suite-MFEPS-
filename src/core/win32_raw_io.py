@@ -3,6 +3,7 @@ MFEPS v2.1.0 — Win32 RAW I/O ラッパー
 ctypes 経由で Windows Kernel32 / DeviceIoControl を操作
 """
 import ctypes
+from contextlib import contextmanager
 import ctypes.wintypes as wintypes
 import logging
 from typing import Optional
@@ -104,6 +105,16 @@ def close_device(handle: int) -> None:
     if handle and handle != INVALID_HANDLE_VALUE:
         kernel32.CloseHandle(handle)
         logger.debug(f"デバイスクローズ: handle={handle}")
+
+
+@contextmanager
+def device_handle(path: str):
+    """デバイスを RAW 読取モードで開き、ブロック終了時に確実にクローズする。"""
+    h = open_device(path)
+    try:
+        yield h
+    finally:
+        close_device(h)
 
 
 def get_disk_geometry(handle: int) -> dict:

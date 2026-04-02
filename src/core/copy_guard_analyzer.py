@@ -9,7 +9,7 @@ from pydantic import BaseModel
 
 from src.models.enums import CopyGuardType
 from src.core.optical_engine import OpticalAnalysisResult
-from src.core.win32_raw_io import open_device, close_device, read_sectors
+from src.core.win32_raw_io import device_handle, read_sectors
 
 logger = logging.getLogger("mfeps.copy_guard_analyzer")
 
@@ -196,8 +196,7 @@ class CopyGuardAnalyzer:
                            info: OpticalAnalysisResult) -> ProtectionInfo:
         """リージョンコード検出"""
         try:
-            handle = open_device(drive_path)
-            try:
+            with device_handle(drive_path) as handle:
                 # VIDEO_TS.IFO のオフセット0x23からリージョンマスク読取
                 # 簡易実装: LBA 257付近を読み取ってIFOシグネチャを探す
                 data = read_sectors(handle, 2048 * 257, 2048)
@@ -217,8 +216,6 @@ class CopyGuardAnalyzer:
                             details=f"リージョン {region_str}",
                             severity="info",
                         )
-            finally:
-                close_device(handle)
         except Exception as e:
             logger.debug(f"リージョン検出エラー: {e}")
 
@@ -297,8 +294,7 @@ class CopyGuardAnalyzer:
             else:
                 sample_count = 0
 
-            handle = open_device(drive_path)
-            try:
+            with device_handle(drive_path) as handle:
                 if sample_count > 0:
                     for i in range(sample_count):
                         probe_lba = scan_start + (step * i)
@@ -309,8 +305,6 @@ class CopyGuardAnalyzer:
                             _ = read_sectors(handle, offset, sector_size)
                         except OSError:
                             bad_sector_count += 1
-            finally:
-                close_device(handle)
 
         except Exception as e:
             logger.debug("ARccOS 第2段階スキャンエラー: %s", e)
@@ -366,8 +360,7 @@ class CopyGuardAnalyzer:
         Disney X-Project DRM検出 — VTS 数 + TT_SRPT 由来のサイズ分布ヒューリスティクス
         """
         try:
-            handle = open_device(drive_path)
-            try:
+            with device_handle(drive_path) as handle:
                 vmg_data = read_sectors(handle, 2048 * 257, 2048 * 8)
                 if vmg_data[:12] != b'DVDVIDEO-VMG':
                     raise ValueError("VMG IFO シグネチャ不一致")
@@ -434,9 +427,6 @@ class CopyGuardAnalyzer:
                         severity="warning",
                     )
 
-            finally:
-                close_device(handle)
-
         except Exception as e:
             logger.debug(f"Disney X-Project検出エラー: {e}")
 
@@ -453,8 +443,7 @@ class CopyGuardAnalyzer:
         aacs_detected = False
 
         try:
-            handle = open_device(drive_path)
-            try:
+            with device_handle(drive_path) as handle:
                 for offset_mb in [0, 1, 2, 4]:
                     data = read_sectors(
                         handle, offset_mb * 1024 * 1024, 2048 * 4
@@ -462,8 +451,6 @@ class CopyGuardAnalyzer:
                     if b"AACS" in data or b"MKB_RW" in data:
                         aacs_detected = True
                         break
-            finally:
-                close_device(handle)
         except Exception as e:
             logger.debug(f"AACS検出エラー: {e}")
 
@@ -508,8 +495,7 @@ class CopyGuardAnalyzer:
                        info: OpticalAnalysisResult) -> ProtectionInfo:
         """BD+検出"""
         try:
-            handle = open_device(drive_path)
-            try:
+            with device_handle(drive_path) as handle:
                 for offset_mb in [0, 1, 2, 4]:
                     data = read_sectors(handle, offset_mb * 1024 * 1024, 2048 * 4)
                     if b'BDSVM' in data:
@@ -520,8 +506,6 @@ class CopyGuardAnalyzer:
                             details="BD+検出 — libbdplus が必要",
                             severity="warning",
                         )
-            finally:
-                close_device(handle)
         except Exception as e:
             logger.debug(f"BD+検出エラー: {e}")
 

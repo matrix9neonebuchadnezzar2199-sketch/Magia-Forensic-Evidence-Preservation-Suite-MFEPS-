@@ -11,12 +11,13 @@ from functools import partial
 from pathlib import Path
 from typing import Any, Callable, Optional
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from src.core.hash_engine import TripleHashEngine
 from src.core.win32_raw_io import (
     open_device,
     close_device,
+    device_handle,
     read_cdrom_toc,
     read_sectors,
     scsi_read_cd,
@@ -57,6 +58,23 @@ class OpticalAnalysisResult(BaseModel):
     ioctl_length_bytes: int = 0
     toc_leadout_bytes: int = 0
     capacity_source: str = ""
+
+
+class OpticalImagingResult(BaseModel):
+    """光学イメージング結果"""
+
+    status: str = "completed"
+    error: str = ""
+    source_hashes: dict[str, str] = Field(default_factory=dict)
+    copied_bytes: int = 0
+    total_bytes: int = 0
+    error_count: int = 0
+    error_sectors: list[int] = Field(default_factory=list)
+    elapsed_seconds: float = 0.0
+    output_path: str = ""
+    decrypt_method: Optional[str] = None
+    css_scrambled: Optional[bool] = None
+    aacs_mkb_version: Optional[int] = None
 
 
 class OpticalMediaAnalyzer:
@@ -138,83 +156,85 @@ class OpticalMediaAnalyzer:
     def analyze(self, drive_path: str) -> OpticalAnalysisResult:
         """メディア全体の分析"""
         result = OpticalAnalysisResult(drive_path=drive_path)
-        handle = None
 
         try:
-            handle = open_device(drive_path)
+            with device_handle(drive_path) as handle:
+                # TOC読取
+                try:
+                    toc = read_cdrom_toc(handle)
+                    result.track_count = toc["track_count"]
+                    result.tracks = [
+                        TrackInfo(
+                            track_number=t["track_number"],
+                            is_data=t["is_data"],
+                            address_lba=t["address_lba"],
+                            control=t["control"],
+                        )
+                        for t in toc["tracks"]
+                    ]
+                except Exception as e:
+                    logger.warning(f"TOC 読取失敗: {e}")
 
-            # TOC読取
-            try:
-                toc = read_cdrom_toc(handle)
-                result.track_count = toc["track_count"]
-                result.tracks = [
-                    TrackInfo(
-                        track_number=t["track_number"],
-                        is_data=t["is_data"],
-                        address_lba=t["address_lba"],
-                        control=t["control"],
+                ioctl_bytes = 0
+                try:
+                    ioctl_bytes = get_disk_length(handle)
+                    result.ioctl_length_bytes = ioctl_bytes
+                except OSError:
+                    pass
+
+                all_audio = bool(result.tracks) and all(
+                    not t.is_data for t in result.tracks
+                )
+
+                if all_audio:
+                    result.sector_size = 2352
+                    toc_leadout_bytes, toc_max_bytes = (
+                        self._toc_leadout_and_max_bytes(
+                            result, result.sector_size
+                        )
                     )
-                    for t in toc["tracks"]
-                ]
-            except Exception as e:
-                logger.warning(f"TOC 読取失敗: {e}")
+                    self._fill_optical_capacity(
+                        result,
+                        ioctl_bytes,
+                        toc_leadout_bytes,
+                        toc_max_bytes,
+                        prefer_ioctl_first=False,
+                    )
+                    result.media_type = "CD-DA"
+                else:
+                    result.sector_size = 2048
+                    toc_leadout_bytes, toc_max_bytes = (
+                        self._toc_leadout_and_max_bytes(
+                            result, result.sector_size
+                        )
+                    )
+                    prefer_ioctl_first = (
+                        ioctl_bytes > _OPTICAL_DVD_HINT_BYTES
+                    )
+                    self._fill_optical_capacity(
+                        result,
+                        ioctl_bytes,
+                        toc_leadout_bytes,
+                        toc_max_bytes,
+                        prefer_ioctl_first=prefer_ioctl_first,
+                    )
+                    result.media_type = self._detect_media_type(
+                        handle, drive_path, result
+                    )
 
-            ioctl_bytes = 0
-            try:
-                ioctl_bytes = get_disk_length(handle)
-                result.ioctl_length_bytes = ioctl_bytes
-            except OSError:
-                pass
+                try:
+                    result.file_system = self._detect_filesystem(handle)
+                except Exception:
+                    pass
 
-            all_audio = bool(result.tracks) and all(
-                not t.is_data for t in result.tracks
-            )
-
-            if all_audio:
-                result.sector_size = 2352
-                toc_leadout_bytes, toc_max_bytes = self._toc_leadout_and_max_bytes(
-                    result, result.sector_size
+                logger.info(
+                    f"光学メディア分析: type={result.media_type}, "
+                    f"fs={result.file_system}, "
+                    f"capacity={result.capacity_bytes / (1024**2):.0f} MiB"
                 )
-                self._fill_optical_capacity(
-                    result,
-                    ioctl_bytes,
-                    toc_leadout_bytes,
-                    toc_max_bytes,
-                    prefer_ioctl_first=False,
-                )
-                result.media_type = "CD-DA"
-            else:
-                result.sector_size = 2048
-                toc_leadout_bytes, toc_max_bytes = self._toc_leadout_and_max_bytes(
-                    result, result.sector_size
-                )
-                # IOCTL が DVD 以上と推定できる大きさなら IOCTL 優先（TOC は不正確なことがある）
-                prefer_ioctl_first = ioctl_bytes > _OPTICAL_DVD_HINT_BYTES
-                self._fill_optical_capacity(
-                    result,
-                    ioctl_bytes,
-                    toc_leadout_bytes,
-                    toc_max_bytes,
-                    prefer_ioctl_first=prefer_ioctl_first,
-                )
-                result.media_type = self._detect_media_type(handle, drive_path, result)
-
-            # ファイルシステム判定
-            try:
-                result.file_system = self._detect_filesystem(handle)
-            except Exception:
-                pass
-
-            logger.info(
-                f"光学メディア分析: type={result.media_type}, "
-                f"fs={result.file_system}, "
-                f"capacity={result.capacity_bytes / (1024**2):.0f} MiB")
 
         except Exception as e:
             logger.error(f"光学メディア分析エラー: {e}")
-        finally:
-            if handle:
-                close_device(handle)
 
         return result
 
@@ -312,7 +332,7 @@ class OpticalImagingEngine:
         hash_sha256: bool = True,
         hash_sha512: bool = False,
         pydvdcss_open_path: Optional[str] = None,
-    ) -> dict:
+    ) -> OpticalImagingResult:
         self._cancel_event.clear()
         self._pause_event.set()
         loop = asyncio.get_running_loop()
@@ -334,6 +354,21 @@ class OpticalImagingEngine:
             ),
         )
 
+    async def run(
+        self,
+        drive_path: str,
+        output_path: str,
+        analysis: OpticalAnalysisResult,
+        **kwargs,
+    ) -> OpticalImagingResult:
+        """メインイメージングフロー（image_optical のエイリアス）"""
+        return await self.image_optical(
+            drive_path=drive_path,
+            output_path=output_path,
+            analysis=analysis,
+            **kwargs,
+        )
+
     def _image_optical_sync(
         self,
         drive_path: str,
@@ -347,7 +382,7 @@ class OpticalImagingEngine:
         hash_sha256: bool = True,
         hash_sha512: bool = False,
         pydvdcss_open_path: Optional[str] = None,
-    ) -> dict:
+    ) -> OpticalImagingResult:
         """
         光学メディアをイメージングする。
 
@@ -395,18 +430,11 @@ class OpticalImagingEngine:
                 analysis.capacity_bytes,
                 analysis.capacity_source,
             )
-            return {
-                "status": "failed",
-                "error": "メディア容量を取得できませんでした (total_sectors=0)",
-                "source_hashes": {},
-                "copied_bytes": 0,
-                "total_bytes": 0,
-                "error_count": 0,
-                "error_sectors": [],
-                "elapsed_seconds": 0.0,
-                "output_path": output_path,
-                "decrypt_method": None,
-            }
+            return OpticalImagingResult(
+                status="failed",
+                error="メディア容量を取得できませんでした (total_sectors=0)",
+                output_path=output_path,
+            )
 
         handle = None
         output_file = None
@@ -578,18 +606,18 @@ class OpticalImagingEngine:
 
         except (OSError, IOError) as e:
             logger.error("光学イメージング I/O エラー: %s", e, exc_info=True)
-            return {
-                "status": "failed",
-                "error": str(e),
-                "decrypt_method": decrypt_method,
-            }
+            return OpticalImagingResult(
+                status="failed",
+                error=str(e),
+                decrypt_method=decrypt_method,
+            )
         except Exception as e:
             logger.error("光学イメージング未知エラー: %s", e, exc_info=True)
-            return {
-                "status": "failed",
-                "error": str(e),
-                "decrypt_method": decrypt_method,
-            }
+            return OpticalImagingResult(
+                status="failed",
+                error=str(e),
+                decrypt_method=decrypt_method,
+            )
         finally:
             if output_file:
                 output_file.close()
@@ -609,19 +637,21 @@ class OpticalImagingEngine:
             f"decrypt={decrypt_method or 'none'}"
         )
 
-        return {
-            "status": "cancelled" if self._cancel_event.is_set() else "completed",
-            "source_hashes": source_hashes,
-            "copied_bytes": copied_bytes,
-            "total_bytes": total_bytes,
-            "error_count": error_count,
-            "error_sectors": error_sectors,
-            "elapsed_seconds": elapsed,
-            "output_path": output_path,
-            "decrypt_method": decrypt_method,
-            "css_scrambled": css_scrambled_snapshot,
-            "aacs_mkb_version": aacs_mkb_snapshot,
-        }
+        return OpticalImagingResult(
+            status=(
+                "cancelled" if self._cancel_event.is_set() else "completed"
+            ),
+            source_hashes=source_hashes,
+            copied_bytes=copied_bytes,
+            total_bytes=total_bytes,
+            error_count=error_count,
+            error_sectors=error_sectors,
+            elapsed_seconds=elapsed,
+            output_path=output_path,
+            decrypt_method=decrypt_method,
+            css_scrambled=css_scrambled_snapshot,
+            aacs_mkb_version=aacs_mkb_snapshot,
+        )
 
     async def cancel(self):
         self._cancel_event.set()

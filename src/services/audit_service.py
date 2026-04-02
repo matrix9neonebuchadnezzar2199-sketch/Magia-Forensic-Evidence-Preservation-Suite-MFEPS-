@@ -4,6 +4,7 @@ MFEPS v2.1.0 — 監査ログサービス（ハッシュチェーン改竄検知
 import hashlib
 import json
 import logging
+import threading
 import uuid
 from datetime import datetime, timezone
 from typing import Optional
@@ -148,10 +149,14 @@ class AuditService:
 
 
 _audit_service: Optional[AuditService] = None
+_audit_service_lock = threading.Lock()
 
 
 def get_audit_service() -> AuditService:
     global _audit_service
-    if _audit_service is None:
-        _audit_service = AuditService()
+    if _audit_service is not None:
+        return _audit_service
+    with _audit_service_lock:
+        if _audit_service is None:
+            _audit_service = AuditService()
     return _audit_service

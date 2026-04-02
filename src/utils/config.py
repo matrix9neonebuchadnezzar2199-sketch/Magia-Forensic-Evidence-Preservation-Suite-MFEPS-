@@ -3,6 +3,7 @@ MFEPS v2.1.0 — 設定管理
 .env ファイルからの読込 + Pydantic バリデーション
 """
 import os
+import threading
 from pathlib import Path
 from pydantic_settings import BaseSettings
 from pydantic import Field
@@ -219,21 +220,28 @@ class MFEPSConfig(BaseSettings):
 
 # シングルトン設定インスタンス
 _config: MFEPSConfig | None = None
+_config_lock = threading.Lock()
 
 
 def get_config() -> MFEPSConfig:
     """設定シングルトンを取得"""
     global _config
-    if _config is None:
-        env_path = _get_base_dir() / ".env"
-        if env_path.exists():
-            os.environ.setdefault("ENV_FILE", str(env_path))
-        _config = MFEPSConfig(_env_file=str(env_path) if env_path.exists() else None)
+    if _config is not None:
+        return _config
+    with _config_lock:
+        if _config is None:
+            env_path = _get_base_dir() / ".env"
+            if env_path.exists():
+                os.environ.setdefault("ENV_FILE", str(env_path))
+            _config = MFEPSConfig(
+                _env_file=str(env_path) if env_path.exists() else None
+            )
     return _config
 
 
 def reload_config() -> MFEPSConfig:
     """設定を再読込"""
     global _config
-    _config = None
+    with _config_lock:
+        _config = None
     return get_config()
