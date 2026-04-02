@@ -104,7 +104,7 @@ class TestOpticalEngineCopyGuard:
             "src.core.optical_engine.read_sectors",
             return_value=b"\x00" * 2048,
         ) as rs, patch(
-            "src.core.optical_engine.close_device"
+            "src.utils.safe_handle.close_device"
         ) as cd:
             eng = OpticalImagingEngine(buffer_sectors=1)
             result = asyncio.run(

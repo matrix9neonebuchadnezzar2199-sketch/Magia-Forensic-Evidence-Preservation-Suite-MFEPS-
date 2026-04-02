@@ -28,6 +28,7 @@ from src.utils.incomplete_file_reporting import (
 from src.utils.long_path import maybe_extend_path
 from src.utils.output_path_helpers import resolve_safe_output_path
 from src.utils.path_sanitize import sanitize_path_component
+from src.utils.rfc3161_client import RFC3161Client
 
 logger = logging.getLogger("mfeps.optical_service")
 
@@ -359,6 +360,20 @@ class OpticalService:
                         else:
                             job.notes = diag_line
 
+                        optical_meta = {
+                            "media_type": analysis.media_type,
+                            "file_system": analysis.file_system,
+                            "sector_size": analysis.sector_size,
+                            "capacity_bytes": analysis.capacity_bytes,
+                            "capacity_source": analysis.capacity_source,
+                            "track_count": len(analysis.tracks)
+                            if analysis.tracks
+                            else 0,
+                        }
+                        job.notes = (job.notes or "") + "\n" + json.dumps(
+                            optical_meta, ensure_ascii=False
+                        )
+
                         if incomplete_records:
                             job.notes = append_incomplete_files_report(
                                 job_id,
@@ -392,6 +407,7 @@ class OpticalService:
                             match_result="pending",
                         )
                         session.add(source_hash)
+                        RFC3161Client().apply_to_source_hash_record(source_hash)
 
                     if verify_hashes:
                         verify_hash = HashRecord(

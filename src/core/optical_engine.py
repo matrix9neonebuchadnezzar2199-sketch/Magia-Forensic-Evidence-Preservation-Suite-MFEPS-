@@ -14,9 +14,9 @@ from typing import Any, Callable, Optional, TYPE_CHECKING
 from pydantic import BaseModel, Field
 
 from src.core.hash_engine import TripleHashEngine
+from src.utils.safe_handle import SafeDeviceHandle, SafeFileHandle
 from src.core.win32_raw_io import (
     open_device,
-    close_device,
     device_handle,
     read_cdrom_toc,
     read_sectors,
@@ -471,8 +471,8 @@ class OpticalImagingEngine:
                 error_code="E8001",
             )
 
-        handle = None
-        output_file = None
+        safe_dev: SafeDeviceHandle | None = None
+        out_sfh: SafeFileHandle | None = None
 
         try:
             # ----- pydvdcss（CSS） -----
@@ -547,10 +547,10 @@ class OpticalImagingEngine:
                         decrypt_method = None
 
             if not decrypt_pydvdcss and not decrypt_aacs:
-                handle = open_device(drive_path)
+                safe_dev = SafeDeviceHandle(open_device(drive_path), drive_path)
 
             Path(output_path).parent.mkdir(parents=True, exist_ok=True)
-            output_file = open(output_path, "wb")
+            out_sfh = SafeFileHandle(open(output_path, "wb"))
 
             current_lba = 0
             copied_bytes = 0
@@ -582,10 +582,15 @@ class OpticalImagingEngine:
                             )
                         elif analysis.media_type == "CD-DA":
                             data = scsi_read_cd(
-                                handle, current_lba, chunk_sectors,
-                                sector_size=2352)
+                                safe_dev.value,
+                                current_lba,
+                                chunk_sectors,
+                                sector_size=2352,
+                            )
                         else:
-                            data = read_sectors(handle, offset, chunk_size)
+                            data = read_sectors(
+                                safe_dev.value, offset, chunk_size
+                            )
                         break
                     except (OSError, IOError) as e:
                         if attempt < self.retry_count - 1:
@@ -616,7 +621,7 @@ class OpticalImagingEngine:
                                 )
                             )
                     hash_engine.update(data)
-                    output_file.write(data)
+                    out_sfh.write(data)
                     copied_bytes += len(data)
 
                 current_lba += chunk_sectors
@@ -636,8 +641,8 @@ class OpticalImagingEngine:
                         "decrypt_mode": _dm,
                     })
 
-            output_file.flush()
-            os.fsync(output_file.fileno())
+            out_sfh.flush()
+            os.fsync(out_sfh.raw.fileno())
 
         except (OSError, IOError) as e:
             logger.error("光学イメージング I/O エラー: %s", e, exc_info=True)
@@ -656,10 +661,10 @@ class OpticalImagingEngine:
                 error_code="E8002",
             )
         finally:
-            if output_file:
-                output_file.close()
-            if handle:
-                close_device(handle)
+            if out_sfh is not None:
+                out_sfh.close()
+            if safe_dev is not None:
+                safe_dev.close()
             if css_reader:
                 css_reader.close()
             if aacs_reader:

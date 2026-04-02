@@ -1,0 +1,11 @@
+# WebUI / エントリポイントは別途 E2E 対象。バックエンド品質ゲート用に集計から除外。
+[run]
+source = src
+omit =
+    src/ui/*
+    src/main.py
+
+[report]
+exclude_lines =
+    pragma: no cover
+    if TYPE_CHECKING:

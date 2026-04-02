@@ -47,6 +47,7 @@ libs/**/*.lastcodeanalysissucceeded
 # テスト・カバレッジ
 .coverage
 coverage.xml
+htmlcov/
 
 # OS
 Thumbs.db

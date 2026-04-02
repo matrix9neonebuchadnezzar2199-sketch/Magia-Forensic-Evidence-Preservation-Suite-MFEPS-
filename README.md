@@ -9,6 +9,7 @@
 [![SQLite](https://img.shields.io/badge/SQLite-3-003B57?logo=sqlite&logoColor=white)](https://www.sqlite.org/)
 [![License](https://img.shields.io/badge/License-MIT-yellow.svg)](./LICENSE)
 [![Platform](https://img.shields.io/badge/Platform-Windows%2010%2F11-0078D6?logo=windows&logoColor=white)](https://www.microsoft.com/windows)
+[![CI coverage](https://img.shields.io/badge/CI%20coverage-backend%20%E2%89%A555%25-4CAF50)](./.github/workflows/ci.yml)
 
 Language: **日本語** | [English](#english)
 
