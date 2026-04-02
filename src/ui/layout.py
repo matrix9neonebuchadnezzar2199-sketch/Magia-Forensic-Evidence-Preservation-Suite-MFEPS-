@@ -4,7 +4,7 @@ MFEPS v2.1.0 — メインレイアウト
 """
 from nicegui import ui, app
 from src.utils.config import get_config
-from src.utils.constants import APP_TITLE, APP_VERSION, COLOR_PRIMARY
+from src.utils.constants import APP_VERSION
 from src.ui.theme.modern_dark import CUSTOM_CSS
 from src.ui.session_auth import require_auth, clear_session
 from src.services.audit_service import get_audit_service

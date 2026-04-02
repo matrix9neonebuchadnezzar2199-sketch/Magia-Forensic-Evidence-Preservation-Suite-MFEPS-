@@ -2,6 +2,7 @@
 MFEPS v2.1.0 — コピーガード解析エンジン
 CSS/AACS/リージョン/ARccOS/Disney X-Project/UOP/CCCD等の自動検出
 """
+import concurrent.futures
 import logging
 from typing import Optional
 
@@ -36,14 +37,14 @@ class CopyGuardResult(BaseModel):
 class CopyGuardAnalyzer:
     """光学メディアのコピーガード自動検出"""
 
-    def analyze(
+    def _analyze_body(
         self,
         drive_path: str,
         media_info: OpticalAnalysisResult,
         *,
         pydvdcss_open_path: Optional[str] = None,
     ) -> CopyGuardResult:
-        """コピーガードを総合分析"""
+        """コピーガードを総合分析（同期本体）"""
         results = []
 
         if media_info.media_type in ("DVD-Video", "DVD-Data"):
@@ -57,7 +58,6 @@ class CopyGuardAnalyzer:
         elif media_info.media_type in ("CD-ROM", "CD-DA"):
             results.extend(self._check_cd_protections(drive_path, media_info))
 
-        # 総合判定
         overall_can_decrypt = all(
             p.can_decrypt or not p.detected for p in results)
 
@@ -73,6 +73,43 @@ class CopyGuardAnalyzer:
             overall_can_decrypt=overall_can_decrypt,
             recommended_action=recommended,
         )
+
+    def analyze(
+        self,
+        drive_path: str,
+        media_info: OpticalAnalysisResult,
+        *,
+        pydvdcss_open_path: Optional[str] = None,
+        timeout: float = 30.0,
+    ) -> CopyGuardResult:
+        """コピーガードを総合分析（timeout 秒で打ち切り）"""
+        if timeout <= 0:
+            return self._analyze_body(
+                drive_path,
+                media_info,
+                pydvdcss_open_path=pydvdcss_open_path,
+            )
+        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as ex:
+            fut = ex.submit(
+                lambda: self._analyze_body(
+                    drive_path,
+                    media_info,
+                    pydvdcss_open_path=pydvdcss_open_path,
+                )
+            )
+            try:
+                return fut.result(timeout=timeout)
+            except concurrent.futures.TimeoutError:
+                logger.warning(
+                    "CopyGuard 分析が %.0f 秒でタイムアウトしました — "
+                    "保護検出をスキップします",
+                    timeout,
+                )
+                return CopyGuardResult(
+                    protections=[],
+                    overall_can_decrypt=True,
+                    recommended_action="分析タイムアウト（スキップ）",
+                )
 
     def _check_dvd_protections(
         self,

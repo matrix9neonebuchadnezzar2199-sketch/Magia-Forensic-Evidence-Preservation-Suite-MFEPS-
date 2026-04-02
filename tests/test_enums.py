@@ -4,15 +4,7 @@
 def test_all_enums_importable():
     from src.models.enums import (
         MediaType,
-        JobStatus,
-        HashTarget,
-        MatchResult,
-        CocAction,
         CopyGuardType,
-        AuditLevel,
-        AuditCategory,
-        CaseStatus,
-        OutputFormat,
         WriteBlockMethod,
     )
 

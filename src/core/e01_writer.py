@@ -22,6 +22,7 @@ from pathlib import Path
 from typing import Callable, Optional
 
 from src.utils.config import get_config
+from src.utils.long_path import ensure_cli_path
 from src.utils.incomplete_file_detector import detect_incomplete_files
 from src.utils.storage_helpers import get_storage_value
 from src.utils.constants import (
@@ -299,11 +300,11 @@ class E01Writer:
         base = E01Writer.check_available()
         diag: list[str] = []
 
-        stored_acq = (get_storage_value("ewfacquire_path") or "").strip()
-        stored_ver = (get_storage_value("ewfverify_path") or "").strip()
+        (get_storage_value("ewfacquire_path") or "").strip()
+        (get_storage_value("ewfverify_path") or "").strip()
 
-        cfg_acq = (config.ewfacquire_path or "").strip()
-        cfg_ver = (config.ewfverify_path or "").strip()
+        (config.ewfacquire_path or "").strip()
+        (config.ewfverify_path or "").strip()
         acq_resolved = base.get("ewfacquire_path") or ""
         ver_resolved = base.get("ewfverify_path") or ""
 
@@ -344,9 +345,12 @@ class E01Writer:
     def build_command(self, params: E01Params) -> tuple[list[str], str]:
         ewfacquire_path = E01Writer._resolve_ewfacquire_path()
 
-        target_path = str(Path(params.output_dir) / params.output_basename)
-        log_path = str(
-            Path(params.output_dir) / f"{params.output_basename}_ewfacquire.log"
+        target_path = ensure_cli_path(
+            Path(params.output_dir) / params.output_basename
+        )
+        log_path = ensure_cli_path(
+            Path(params.output_dir)
+            / f"{params.output_basename}_ewfacquire.log"
         )
         compression_value = f"{params.compression_method}:{params.compression_level}"
 

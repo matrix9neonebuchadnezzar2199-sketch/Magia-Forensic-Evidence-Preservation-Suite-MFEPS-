@@ -5,7 +5,6 @@ from nicegui import ui
 from src.utils.constants import (
     COLOR_SUCCESS,
     COLOR_ERROR,
-    COLOR_WARNING,
     INCOMPLETE_FILE_ACCENT,
 )
 
@@ -17,7 +16,7 @@ def render_progress_panel(progress: dict):
     speed = progress.get("speed_mibps", 0)
     eta = progress.get("eta_seconds", 0)
     errors = progress.get("error_count", 0)
-    status = progress.get("status", "idle")
+    progress.get("status", "idle")
 
     pct = (copied / total * 100) if total > 0 else 0
 
@@ -72,7 +71,7 @@ def render_incomplete_files_warning(incomplete_files: list[dict]) -> None:
         ui.label(
             "これらのファイルは自動削除されません。"
             "確認のうえ手動で削除してください。"
-        ).classes(f"text-body2 q-mt-sm text-weight-medium")
+        ).classes("text-body2 q-mt-sm text-weight-medium")
 
 
 def render_hash_display(hashes: dict, label: str = "ハッシュ値"):

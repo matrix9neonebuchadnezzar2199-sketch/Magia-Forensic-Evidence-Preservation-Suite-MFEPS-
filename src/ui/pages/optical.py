@@ -14,7 +14,6 @@ from src.ui.components.legal_consent_dialog import (
     is_consent_given,
     show_legal_consent_dialog,
 )
-from src.ui.layout import create_layout
 from src.ui.session_auth import get_current_actor_name
 
 
@@ -23,8 +22,8 @@ def build_optical_page():
     ui.label("💿 CD・DVD・BD イメージング").classes("text-h5 text-weight-bold q-mb-md")
 
     state = {
-        "selected_drive": None, 
-        "analysis": None, 
+        "selected_drive": None,
+        "analysis": None,
         "guard_result": None,
         "case_number": "",
         "evidence_number": "",
@@ -67,7 +66,7 @@ def build_optical_page():
                     if not state["selected_drive"].media_loaded:
                         ui.notify("メディアが装填されていません", type="negative")
                         return
-                    
+
                     stepper.next()
 
                     if not is_consent_given():
@@ -85,7 +84,7 @@ def build_optical_page():
                     with scan_container:
                         ui.spinner(size="lg")
                         ui.label("メディア情報の解析とコピーガードを検出しています...")
-                        
+
                     analyzer = OpticalMediaAnalyzer()
                     drive_path = state["selected_drive"].device_path
                     pydvdcss_open = (
@@ -94,7 +93,7 @@ def build_optical_page():
                     analysis = await asyncio.get_running_loop().run_in_executor(
                         None, analyzer.analyze, drive_path)
                     state["analysis"] = analysis
-                    
+
                     guard_analyzer = CopyGuardAnalyzer()
                     guard_result = await asyncio.get_running_loop().run_in_executor(
                         None,
@@ -105,7 +104,7 @@ def build_optical_page():
                         ),
                     )
                     state["guard_result"] = guard_result
-                    
+
                     scan_container.clear()
                     with scan_container:
                         ui.label(f"メディア種類: {analysis.media_type} ({analysis.file_system})").classes("text-body1 text-weight-bold")
@@ -150,7 +149,7 @@ def build_optical_page():
 
             with ui.stepper_navigation():
                 ui.button("← 戻る", on_click=stepper.previous).props("flat")
-                
+
                 async def start_copy():
                     case_val = case_input.value
                     ev_val = ev_input.value
@@ -158,7 +157,7 @@ def build_optical_page():
                     if not case_val or not ev_val:
                         ui.notify("案件番号と証拠品番号を入力してください", type="warning")
                         return
-                    
+
                     from src.services.optical_service import get_optical_service
                     svc = get_optical_service()
                     if state.get("guard_result") is None:
@@ -200,11 +199,11 @@ def build_optical_page():
                         ),
                     )
                     state["job_id"] = job_id
-                    
+
                     progress_container.clear()
                     log_area.clear()
                     log_area.push(f"[{job_id}] 光学メディアのイメージングを開始しました...")
-                    
+
                     if "timer" in state and state["timer"]:
                         state["timer"].active = False
                     state["timer"] = ui.timer(1.0, update_progress)
@@ -215,7 +214,7 @@ def build_optical_page():
         # ===== STEP 3: コピー実行 =====
         with ui.step("コピー実行", icon="content_copy"):
             ui.label("⚙️ コピー実行中").classes("text-h6 q-mb-md")
-            
+
             progress_container = ui.column().classes("full-width")
             log_area = ui.log(max_lines=100).classes("full-width q-mt-md").style("height: 200px;")
 
@@ -249,7 +248,7 @@ def build_optical_page():
             with ui.stepper_navigation():
                 btn_next = ui.button("結果を確認 →", on_click=stepper.next, color="primary").props("unelevated")
                 btn_next.disable()
-                
+
             async def update_progress():
                 if not state.get("job_id"):
                     return
@@ -257,7 +256,7 @@ def build_optical_page():
                 svc = get_optical_service()
                 progress = svc.get_progress(state["job_id"])
                 status = progress.get("status", "unknown")
-                
+
                 progress_container.clear()
                 with progress_container:
                     from src.ui.components.progress_panel import (
@@ -276,7 +275,7 @@ def build_optical_page():
                         )
                     elif src_h:
                         render_hash_display(src_h, "ソースハッシュ")
-                        
+
                 if status in ["completed", "failed", "cancelled"]:
                     if "timer" in state and state["timer"]:
                         state["timer"].active = False
@@ -288,7 +287,7 @@ def build_optical_page():
         # ===== STEP 4: リザルト =====
         with ui.step("リザルト", icon="check_circle"):
             ui.label("✅ コピー完了").classes("text-h6 q-mb-md")
-            
+
             result_container = ui.column().classes("full-width")
             ui.label("結果はコピー実行後に表示されます").classes("text-caption text-grey-6")
 
@@ -298,7 +297,7 @@ def build_optical_page():
                 with result_container:
                     if res.get("status") == "completed":
                         ui.label("イメージングプロセスの結果レポート").classes("text-body1 q-mb-md")
-                        
+
                         src_hashes = res.get("source_hashes", {})
                         ver_hashes = res.get("verify_hashes", {})
                         if src_hashes and ver_hashes:
@@ -316,7 +315,7 @@ def build_optical_page():
                                 src_hashes,
                                 "ソースハッシュ (検証なしまたは保留)",
                             )
-                            
+
                         inc_done = res.get("incomplete_files") or []
                         if inc_done:
                             from src.ui.components.progress_panel import (

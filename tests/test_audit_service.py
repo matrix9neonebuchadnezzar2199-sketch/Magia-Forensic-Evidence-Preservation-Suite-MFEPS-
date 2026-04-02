@@ -1,5 +1,4 @@
 """監査ログのハッシュチェーン整合性テスト"""
-import pytest
 
 from src.services.audit_service import AuditService
 

@@ -10,7 +10,6 @@ import threading
 import time
 
 import psutil
-from datetime import datetime, timezone
 from pathlib import Path
 from typing import Callable, Optional
 
@@ -19,11 +18,16 @@ from pydantic import BaseModel, Field
 from src.core.buffer_manager import DoubleBufferManager
 from src.core.hash_engine import TripleHashEngine, verify_image_hash
 from src.core.win32_raw_io import (
-    open_device, close_device, get_disk_geometry, get_disk_length, read_sectors,
+    open_device,
+    get_disk_geometry,
+    get_disk_length,
+    read_sectors,
 )
 from src.core.write_blocker import verify_write_block
 from src.utils.incomplete_file_detector import detect_incomplete_files
+from src.utils.long_path import maybe_extend_path
 from src.utils.output_path_helpers import resolve_safe_output_path
+from src.utils.safe_handle import SafeDeviceHandle, SafeFileHandle
 
 logger = logging.getLogger("mfeps.imaging_engine")
 
@@ -94,8 +98,8 @@ class ImagingEngine:
     async def execute(self, job: ImagingJobParams) -> ImagingResult:
         """メインイメージングフロー"""
         start_time = time.time()
-        handle = None
-        output_file = None
+        dev: SafeDeviceHandle | None = None
+        sfh: SafeFileHandle | None = None
         buffer_mgr: DoubleBufferManager | None = None
         result = ImagingResult(job_id=job.job_id)
         self._verify_thread_cancel.clear()
@@ -106,7 +110,9 @@ class ImagingEngine:
 
             # 1. ソースデバイスオープン → ジオメトリ → 長さ
             try:
-                handle = open_device(job.source_path)
+                dev = SafeDeviceHandle(
+                    open_device(job.source_path), job.source_path
+                )
             except OSError as e:
                 result.status = "failed"
                 result.error_code = "E2005"
@@ -115,25 +121,21 @@ class ImagingEngine:
                 return result
 
             try:
-                geometry = get_disk_geometry(handle)
+                geometry = get_disk_geometry(dev.value)
             except OSError as e:
                 result.status = "failed"
                 result.error_code = "E2006"
                 result.error_message = str(e)
                 logger.error("ジオメトリ取得失敗: %s", e, exc_info=True)
-                close_device(handle)
-                handle = None
                 return result
 
             try:
-                total_bytes = get_disk_length(handle)
+                total_bytes = get_disk_length(dev.value)
             except OSError as e:
                 result.status = "failed"
                 result.error_code = "E2006"
                 result.error_message = str(e)
                 logger.error("ディスク長取得失敗: %s", e, exc_info=True)
-                close_device(handle)
-                handle = None
                 return result
 
             sector_size = geometry["bytes_per_sector"]
@@ -151,7 +153,7 @@ class ImagingEngine:
                 logger.warning("⚠️ ライトブロック未検証 — 続行します")
 
             # 3. 出力ファイル作成
-            output_dir = Path(job.output_dir)
+            output_dir = maybe_extend_path(Path(job.output_dir))
             output_dir.mkdir(parents=True, exist_ok=True)
             output_path = resolve_safe_output_path(output_dir, "image", ".dd")
             result.output_path = str(output_path)
@@ -167,7 +169,7 @@ class ImagingEngine:
                 logger.error(result.error_message)
                 return result
 
-            output_file = open(output_path, "wb")
+            sfh = SafeFileHandle(open(output_path, "wb"))
 
             # 4. イメージングパイプライン
             self._progress["status"] = "imaging"
@@ -183,7 +185,7 @@ class ImagingEngine:
 
             # 読取（事前確保バッファで Win32 読取の割り当てを抑止）
             def _read(offset: int, size: int, buf) -> bytes:
-                return read_sectors(handle, offset, size, buffer=buf)
+                return read_sectors(dev.value, offset, size, buffer=buf)
 
             # 進捗更新関数
             speed_samples = []
@@ -225,18 +227,17 @@ class ImagingEngine:
                     self._cancel_event, self._pause_event))
 
             process_task = asyncio.create_task(
-                buffer_mgr.process_loop(hash_engine, output_file, _progress))
+                buffer_mgr.process_loop(hash_engine, sfh.raw, _progress))
 
             await asyncio.gather(read_task, process_task)
 
-            # 5. フラッシュ・クローズ
-            output_file.flush()
-            os.fsync(output_file.fileno())
-            output_file.close()
-            output_file = None
-
-            close_device(handle)
-            handle = None
+            # 5. フラッシュ・クローズ（検証前にデバイス・出力ファイルを解放）
+            sfh.flush()
+            os.fsync(sfh.raw.fileno())
+            sfh.close()
+            sfh = None
+            dev.close()
+            dev = None
 
             # 6. ソースハッシュ確定
             result.source_hashes = hash_engine.hexdigests()
@@ -332,10 +333,10 @@ class ImagingEngine:
         finally:
             if buffer_mgr is not None:
                 buffer_mgr.shutdown()
-            if output_file:
-                output_file.close()
-            if handle and handle != -1:
-                close_device(handle)
+            if sfh is not None:
+                sfh.close()
+            if dev is not None:
+                dev.close()
 
             elapsed = time.time() - start_time
             result.elapsed_seconds = round(elapsed, 2)

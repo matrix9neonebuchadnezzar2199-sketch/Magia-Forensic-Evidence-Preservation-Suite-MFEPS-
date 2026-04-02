@@ -5,6 +5,8 @@ import logging
 from datetime import datetime, timezone
 from pathlib import Path
 
+from src.utils.long_path import maybe_extend_path
+
 logger = logging.getLogger("mfeps.output_path_helpers")
 
 
@@ -20,7 +22,7 @@ def resolve_safe_output_path(
     candidate = output_dir / f"{basename}{extension}"
 
     if not candidate.exists():
-        return candidate
+        return maybe_extend_path(candidate)
 
     ts = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     new_name = f"{basename}_{ts}{extension}"
@@ -38,4 +40,4 @@ def resolve_safe_output_path(
         new_path.name,
     )
 
-    return new_path
+    return maybe_extend_path(new_path)

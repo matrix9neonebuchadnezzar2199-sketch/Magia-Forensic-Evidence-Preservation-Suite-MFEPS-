@@ -38,7 +38,7 @@ def test_geometry_oserror_sets_e2006(tmp_path):
         with patch("src.core.imaging_engine.open_device", return_value=42), patch(
             "src.core.imaging_engine.get_disk_geometry",
             side_effect=OSError("geom"),
-        ), patch("src.core.imaging_engine.close_device"):
+        ), patch("src.utils.safe_handle.close_device"):
             return await eng.execute(_job(tmp_path))
 
     r = asyncio.run(_run())

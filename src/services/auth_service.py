@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import logging
 import secrets
+import threading
 from datetime import datetime, timezone
 from typing import Any, Optional
 
@@ -70,12 +71,16 @@ class AuthService:
 
 
 _auth_service: Optional[AuthService] = None
+_auth_service_lock = threading.Lock()
 
 
 def get_auth_service() -> AuthService:
     global _auth_service
-    if _auth_service is None:
-        _auth_service = AuthService()
+    if _auth_service is not None:
+        return _auth_service
+    with _auth_service_lock:
+        if _auth_service is None:
+            _auth_service = AuthService()
     return _auth_service
 
 

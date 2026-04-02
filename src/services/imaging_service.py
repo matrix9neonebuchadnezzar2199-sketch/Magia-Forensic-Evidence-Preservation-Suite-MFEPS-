@@ -28,6 +28,7 @@ from src.utils.incomplete_file_reporting import (
     append_incomplete_files_report,
     incomplete_reason_from_job_status,
 )
+from src.utils.rfc3161_client import RFC3161Client
 
 
 def _parse_e01_remaining_to_seconds(remaining_str: str) -> float:
@@ -117,7 +118,7 @@ class ImagingService:
         from src.services.case_service import CaseService, EvidenceService
         case_svc = CaseService()
         ev_svc = EvidenceService()
-        
+
         real_case_id = case_svc.get_or_create_case(case_number=case_id)
         real_evidence_id = ev_svc.get_or_create_evidence(
             case_id=real_case_id,
@@ -643,6 +644,7 @@ class ImagingService:
                         match_result="pending",
                     )
                     session.add(source_hash)
+                    RFC3161Client().apply_to_source_hash_record(source_hash)
 
                 verify_for_db = _merge_e01_verify_hashes_from_source(
                     job, result

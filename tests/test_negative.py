@@ -172,7 +172,7 @@ class TestDiskFull:
         ), patch(
             "src.core.imaging_engine.get_disk_length", return_value=1_000_000_000
         ), patch(
-            "src.core.imaging_engine.close_device"
+            "src.utils.safe_handle.close_device"
         ), patch(
             "src.core.imaging_engine.verify_write_block", return_value=True
         ), patch(
@@ -363,7 +363,7 @@ class TestReadOSError:
             "src.core.imaging_engine.get_disk_geometry",
             return_value={"bytes_per_sector": 512},
         ), patch("src.core.imaging_engine.get_disk_length", return_value=4096), patch(
-            "src.core.imaging_engine.close_device"
+            "src.utils.safe_handle.close_device"
         ), patch(
             "src.core.imaging_engine.verify_write_block", return_value=True
         ), patch("psutil.disk_usage", return_value=mock_usage), patch(

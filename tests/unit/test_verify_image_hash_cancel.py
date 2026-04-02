@@ -1,6 +1,5 @@
 """Phase 3-4: verify_image_hash cancel_event"""
 import threading
-from pathlib import Path
 
 from src.core.hash_engine import verify_image_hash
 

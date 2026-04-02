@@ -9,14 +9,14 @@ import threading
 import time
 from functools import partial
 from pathlib import Path
-from typing import Any, Callable, Optional
+from typing import Any, Callable, Optional, TYPE_CHECKING
 
 from pydantic import BaseModel, Field
 
 from src.core.hash_engine import TripleHashEngine
+from src.utils.safe_handle import SafeDeviceHandle, SafeFileHandle
 from src.core.win32_raw_io import (
     open_device,
-    close_device,
     device_handle,
     read_cdrom_toc,
     read_sectors,
@@ -25,6 +25,9 @@ from src.core.win32_raw_io import (
 )
 
 logger = logging.getLogger("mfeps.optical_engine")
+
+if TYPE_CHECKING:
+    from src.core.copy_guard_analyzer import CopyGuardResult
 
 # 容量選択・メディア種別のしきい値（バイト）
 # DVD 以上のディスクでは IOCTL が TOC リードアウトより信頼しやすい（CD の 150 セクタ問題は CD 特有）
@@ -333,6 +336,7 @@ class OpticalImagingEngine:
         hash_sha256: bool = True,
         hash_sha512: bool = False,
         pydvdcss_open_path: Optional[str] = None,
+        copy_guard_result: Optional["CopyGuardResult"] = None,
     ) -> OpticalImagingResult:
         self._cancel_event.clear()
         self._pause_event.set()
@@ -352,6 +356,7 @@ class OpticalImagingEngine:
                 hash_sha256,
                 hash_sha512,
                 pydvdcss_open_path,
+                copy_guard_result,
             ),
         )
 
@@ -383,12 +388,14 @@ class OpticalImagingEngine:
         hash_sha256: bool = True,
         hash_sha512: bool = False,
         pydvdcss_open_path: Optional[str] = None,
+        copy_guard_result: Optional["CopyGuardResult"] = None,
     ) -> OpticalImagingResult:
         """
         光学メディアをイメージングする。
 
         use_pydvdcss: DvdCssReader（CSS）。use_aacs: AacsReader（AACS）。
         いずれも初期化失敗時は RAW にフォールバック。
+        copy_guard_result: CopyGuardAnalyzer の結果に基づき復号フラグを補正可能。
         """
         try:
             output_path = os.fspath(output_path)
@@ -423,6 +430,32 @@ class OpticalImagingEngine:
             f"use_pydvdcss={use_pydvdcss}, use_aacs={use_aacs}"
         )
 
+        if copy_guard_result is not None:
+            from src.models.enums import CopyGuardType
+
+            for prot in copy_guard_result.protections:
+                t = prot.type
+                if (
+                    t == CopyGuardType.CSS.value
+                    and prot.detected
+                    and prot.can_decrypt
+                ):
+                    if not use_pydvdcss:
+                        logger.info(
+                            "CopyGuard: CSS 検出かつ復号可能 — pydvdcss を有効化します"
+                        )
+                    use_pydvdcss = True
+                if (
+                    t == CopyGuardType.AACS.value
+                    and prot.detected
+                    and not prot.can_decrypt
+                ):
+                    if use_aacs:
+                        logger.warning(
+                            "CopyGuard: AACS 検出だが復号不可 — RAW にフォールバックします"
+                        )
+                    use_aacs = False
+
         if total_sectors <= 0:
             logger.error(
                 "光学メディア容量が 0 です: total_sectors=%d, "
@@ -438,8 +471,8 @@ class OpticalImagingEngine:
                 error_code="E8001",
             )
 
-        handle = None
-        output_file = None
+        safe_dev: SafeDeviceHandle | None = None
+        out_sfh: SafeFileHandle | None = None
 
         try:
             # ----- pydvdcss（CSS） -----
@@ -514,10 +547,10 @@ class OpticalImagingEngine:
                         decrypt_method = None
 
             if not decrypt_pydvdcss and not decrypt_aacs:
-                handle = open_device(drive_path)
+                safe_dev = SafeDeviceHandle(open_device(drive_path), drive_path)
 
             Path(output_path).parent.mkdir(parents=True, exist_ok=True)
-            output_file = open(output_path, "wb")
+            out_sfh = SafeFileHandle(open(output_path, "wb"))
 
             current_lba = 0
             copied_bytes = 0
@@ -549,10 +582,15 @@ class OpticalImagingEngine:
                             )
                         elif analysis.media_type == "CD-DA":
                             data = scsi_read_cd(
-                                handle, current_lba, chunk_sectors,
-                                sector_size=2352)
+                                safe_dev.value,
+                                current_lba,
+                                chunk_sectors,
+                                sector_size=2352,
+                            )
                         else:
-                            data = read_sectors(handle, offset, chunk_size)
+                            data = read_sectors(
+                                safe_dev.value, offset, chunk_size
+                            )
                         break
                     except (OSError, IOError) as e:
                         if attempt < self.retry_count - 1:
@@ -583,7 +621,7 @@ class OpticalImagingEngine:
                                 )
                             )
                     hash_engine.update(data)
-                    output_file.write(data)
+                    out_sfh.write(data)
                     copied_bytes += len(data)
 
                 current_lba += chunk_sectors
@@ -603,8 +641,8 @@ class OpticalImagingEngine:
                         "decrypt_mode": _dm,
                     })
 
-            output_file.flush()
-            os.fsync(output_file.fileno())
+            out_sfh.flush()
+            os.fsync(out_sfh.raw.fileno())
 
         except (OSError, IOError) as e:
             logger.error("光学イメージング I/O エラー: %s", e, exc_info=True)
@@ -623,10 +661,10 @@ class OpticalImagingEngine:
                 error_code="E8002",
             )
         finally:
-            if output_file:
-                output_file.close()
-            if handle:
-                close_device(handle)
+            if out_sfh is not None:
+                out_sfh.close()
+            if safe_dev is not None:
+                safe_dev.close()
             if css_reader:
                 css_reader.close()
             if aacs_reader:

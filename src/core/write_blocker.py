@@ -36,7 +36,6 @@ Windows レジストリ方式 + デバイス固有チェック
 import ctypes
 import logging
 import winreg
-from typing import Optional
 
 logger = logging.getLogger("mfeps.write_blocker")
 

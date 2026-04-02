@@ -25,8 +25,10 @@ from src.utils.incomplete_file_reporting import (
     append_incomplete_files_report,
     incomplete_reason_from_job_status,
 )
+from src.utils.long_path import maybe_extend_path
 from src.utils.output_path_helpers import resolve_safe_output_path
 from src.utils.path_sanitize import sanitize_path_component
+from src.utils.rfc3161_client import RFC3161Client
 
 logger = logging.getLogger("mfeps.optical_service")
 
@@ -69,7 +71,7 @@ class OpticalService:
         from src.services.case_service import CaseService, EvidenceService
         case_svc = CaseService()
         ev_svc = EvidenceService()
-        
+
         real_case_id = case_svc.get_or_create_case(case_number=case_id)
         real_evidence_id = ev_svc.get_or_create_evidence(
             case_id=real_case_id,
@@ -80,9 +82,9 @@ class OpticalService:
 
         safe_case = sanitize_path_component(case_id)
         safe_ev = sanitize_path_component(evidence_id)
-        output_dir = config.output_dir / safe_case / safe_ev
+        output_dir = maybe_extend_path(config.output_dir / safe_case / safe_ev)
         output_dir.mkdir(parents=True, exist_ok=True)
-        
+
         ext = ".iso" if output_format.upper() == "ISO" else ".dd"
         output_path = str(resolve_safe_output_path(output_dir, "image", ext))
 
@@ -201,6 +203,21 @@ class OpticalService:
         self._update_job_status(job_id, "imaging", started_at=start_time)
         self._progress[job_id]["status"] = "imaging"
 
+        copy_guard_result = None
+        try:
+            from src.core.copy_guard_analyzer import CopyGuardAnalyzer
+
+            copy_guard_result = CopyGuardAnalyzer().analyze(
+                drive_path,
+                analysis,
+                pydvdcss_open_path=pydvdcss_open_path,
+                timeout=30.0,
+            )
+        except Exception as ex:
+            logger.warning(
+                "CopyGuard 分析失敗: %s — 続行します", ex, exc_info=True
+            )
+
         img_result = OpticalImagingResult()
         try:
             img_result = await engine.image_optical(
@@ -215,6 +232,7 @@ class OpticalService:
                 hash_sha256=hash_sha256,
                 hash_sha512=hash_sha512,
                 pydvdcss_open_path=pydvdcss_open_path,
+                copy_guard_result=copy_guard_result,
             )
 
             status = img_result.status
@@ -342,6 +360,20 @@ class OpticalService:
                         else:
                             job.notes = diag_line
 
+                        optical_meta = {
+                            "media_type": analysis.media_type,
+                            "file_system": analysis.file_system,
+                            "sector_size": analysis.sector_size,
+                            "capacity_bytes": analysis.capacity_bytes,
+                            "capacity_source": analysis.capacity_source,
+                            "track_count": len(analysis.tracks)
+                            if analysis.tracks
+                            else 0,
+                        }
+                        job.notes = (job.notes or "") + "\n" + json.dumps(
+                            optical_meta, ensure_ascii=False
+                        )
+
                         if incomplete_records:
                             job.notes = append_incomplete_files_report(
                                 job_id,
@@ -375,6 +407,7 @@ class OpticalService:
                             match_result="pending",
                         )
                         session.add(source_hash)
+                        RFC3161Client().apply_to_source_hash_record(source_hash)
 
                     if verify_hashes:
                         verify_hash = HashRecord(

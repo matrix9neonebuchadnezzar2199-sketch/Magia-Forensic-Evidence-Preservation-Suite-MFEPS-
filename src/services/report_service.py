@@ -5,7 +5,7 @@ Jinja2 テンプレート + ReportLab PDF
 import json
 import logging
 import os
-from datetime import datetime, timezone
+from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
@@ -83,7 +83,6 @@ class ReportService:
 
         try:
             from reportlab.lib.pagesizes import A4
-            from reportlab.lib.units import mm
             from reportlab.pdfgen import canvas
             from reportlab.lib.colors import HexColor
 
@@ -265,6 +264,74 @@ class ReportService:
                                 c.showPage()
                                 y = A4[1] - 40
                                 c.setFont(jp, 8)
+
+            rfc_pdf = data.get("rfc3161") or {}
+            y -= 24
+            if jp == "Helvetica":
+                c.setFont("Helvetica-Bold", 12)
+            else:
+                c.setFont(jp, 12)
+            c.drawString(30, y, "■ RFC3161 タイムスタンプ")
+            y -= 16
+            c.setFont(jp, 9)
+            if rfc_pdf.get("has_timestamp"):
+                c.drawString(50, y, "状態: 取得済み")
+                y -= 12
+                c.drawString(
+                    50,
+                    y,
+                    f"TSA: {(rfc_pdf.get('tsa_url') or '')[:90]}",
+                )
+                y -= 12
+            else:
+                c.drawString(50, y, "記録なし（設定無効または未取得）")
+                y -= 12
+
+            oi_pdf = data.get("optical_info")
+            if oi_pdf:
+                y -= 8
+                if jp == "Helvetica":
+                    c.setFont("Helvetica-Bold", 12)
+                else:
+                    c.setFont(jp, 12)
+                c.drawString(30, y, "■ 光学メディア情報")
+                y -= 16
+                c.setFont(jp, 9)
+                cap_b = int(oi_pdf.get("capacity_bytes") or 0)
+                opt_lines = [
+                    f"メディア種別: {oi_pdf.get('media_type', 'N/A')}",
+                    f"ファイルシステム: {oi_pdf.get('file_system', 'N/A')}",
+                    f"セクタサイズ: {oi_pdf.get('sector_size', 'N/A')} bytes",
+                    f"容量: {cap_b:,} bytes",
+                    f"容量算出: {oi_pdf.get('capacity_source', 'N/A')}",
+                    f"トラック数: {oi_pdf.get('track_count', 0)}",
+                ]
+                for line in opt_lines:
+                    c.drawString(50, y, line[:110])
+                    y -= 11
+                    if y < 50:
+                        c.showPage()
+                        y = A4[1] - 50
+                        c.setFont(jp, 9)
+
+            cg_t_pdf = data.get("copy_guard_type") or ""
+            cg_d_pdf = data.get("copy_guard_detail") or ""
+            if cg_t_pdf or cg_d_pdf:
+                y -= 8
+                if jp == "Helvetica":
+                    c.setFont("Helvetica-Bold", 12)
+                else:
+                    c.setFont(jp, 12)
+                c.drawString(30, y, "■ コピーガード分析")
+                y -= 14
+                c.setFont(jp, 9)
+                if cg_t_pdf:
+                    c.drawString(50, y, f"検出: {cg_t_pdf[:100]}")
+                    y -= 11
+                if cg_d_pdf:
+                    snippet = (cg_d_pdf[:200] + "...") if len(cg_d_pdf) > 200 else cg_d_pdf
+                    c.drawString(50, y, f"詳細: {snippet[:100]}")
+                    y -= 11
 
             # 書き込み保護方式
             y -= 30
@@ -454,6 +521,54 @@ th {{ background: #f0f0f0; }}
             )
         html += e01_section + ewfinfo_section
 
+        rfc_d = data.get("rfc3161") or {}
+        if rfc_d.get("has_timestamp"):
+            _tu = (rfc_d.get("tsa_url") or "").replace("&", "&amp;")
+            html += f"""
+<h2>RFC3161 タイムスタンプ</h2>
+<table>
+<tr><th>状態</th><td>取得済み</td></tr>
+<tr><th>TSA URL</th><td>{_tu}</td></tr>
+</table>
+"""
+        else:
+            html += """
+<h2>RFC3161 タイムスタンプ</h2>
+<p>記録なし（設定無効、または未取得）</p>
+"""
+
+        oi = data.get("optical_info")
+        if oi:
+            html += f"""
+<h2>光学メディア情報</h2>
+<table>
+<tr><th>メディア種別</th><td>{oi.get("media_type", "N/A")}</td></tr>
+<tr><th>ファイルシステム</th><td>{oi.get("file_system", "N/A")}</td></tr>
+<tr><th>セクタサイズ</th><td>{oi.get("sector_size", "N/A")} bytes</td></tr>
+<tr><th>容量</th><td>{oi.get("capacity_bytes", 0):,} bytes</td></tr>
+<tr><th>容量算出</th><td>{oi.get("capacity_source", "N/A")}</td></tr>
+<tr><th>トラック数</th><td>{oi.get("track_count", 0)}</td></tr>
+</table>
+"""
+
+        _cgt = data.get("copy_guard_type") or ""
+        _cgd = data.get("copy_guard_detail") or ""
+        if _cgt or _cgd:
+            html += "<h2>コピーガード分析</h2><table>"
+            if _cgt:
+                html += f"<tr><th>検出タイプ</th><td>{_cgt}</td></tr>"
+            if _cgd:
+                esc = (
+                    _cgd.replace("&", "&amp;")
+                    .replace("<", "&lt;")
+                    .replace(">", "&gt;")
+                )
+                html += (
+                    f"<tr><th>詳細</th><td><pre style='white-space:pre-wrap'>"
+                    f"{esc[:2000]}</pre></td></tr>"
+                )
+            html += "</table>"
+
         wb_method = data.get("write_block_method", "none")
         wb_labels = {
             "both": "ハードウェア + ソフトウェア（最高信頼性）",
@@ -564,6 +679,35 @@ th {{ background: #f0f0f0; }}
                 "e01_command_line": getattr(job, "e01_command_line", None) or "",
                 "capacity_notes": job.notes or "",
             }
+
+            optical_info = None
+            for line in (job.notes or "").split("\n"):
+                ln = line.strip()
+                if not ln.startswith("{"):
+                    continue
+                if '"media_type"' not in ln or '"file_system"' not in ln:
+                    continue
+                try:
+                    j = json.loads(ln)
+                    if isinstance(j, dict) and j.get("media_type"):
+                        optical_info = j
+                        break
+                except Exception:
+                    continue
+
+            data["optical_info"] = optical_info
+            data["rfc3161"] = {
+                "has_timestamp": bool(
+                    source_hash and getattr(source_hash, "rfc3161_token", None)
+                ),
+                "tsa_url": (source_hash.rfc3161_tsa_url or "")
+                if source_hash
+                else "",
+            }
+            data["copy_guard_type"] = getattr(job, "copy_guard_type", None) or ""
+            data["copy_guard_detail"] = (
+                getattr(job, "copy_guard_detail", None) or ""
+            )
 
         info = get_imaging_service().get_e01_info(job_id)
         data["ewfinfo"] = None

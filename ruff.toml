@@ -1,0 +1,10 @@
+# MFEPS — Ruff（Phase 4-5）
+line-length = 120
+
+[lint]
+select = ["E", "F", "W"]
+# NiceGUI / 再エクスポートで意図的に遅延 import している箇所がある
+ignore = ["E402", "E501"]
+
+[lint.per-file-ignores]
+"tests/**" = ["S101"]
