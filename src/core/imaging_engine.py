@@ -10,7 +10,6 @@ import threading
 import time
 
 import psutil
-from datetime import datetime, timezone
 from pathlib import Path
 from typing import Callable, Optional
 
@@ -23,6 +22,7 @@ from src.core.win32_raw_io import (
 )
 from src.core.write_blocker import verify_write_block
 from src.utils.incomplete_file_detector import detect_incomplete_files
+from src.utils.long_path import maybe_extend_path
 from src.utils.output_path_helpers import resolve_safe_output_path
 
 logger = logging.getLogger("mfeps.imaging_engine")
@@ -151,7 +151,7 @@ class ImagingEngine:
                 logger.warning("⚠️ ライトブロック未検証 — 続行します")
 
             # 3. 出力ファイル作成
-            output_dir = Path(job.output_dir)
+            output_dir = maybe_extend_path(Path(job.output_dir))
             output_dir.mkdir(parents=True, exist_ok=True)
             output_path = resolve_safe_output_path(output_dir, "image", ".dd")
             result.output_path = str(output_path)

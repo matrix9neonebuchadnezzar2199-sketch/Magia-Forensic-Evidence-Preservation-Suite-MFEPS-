@@ -3,8 +3,6 @@ MFEPS v2.1.0 — レポート画面
 報告書一覧 + 生成
 """
 from nicegui import ui
-import os
-from pathlib import Path
 from src.utils.config import get_config
 
 
@@ -74,7 +72,9 @@ def build_reports_page():
                     ui.notify(f"レポート生成エラー: {e}", type="negative")
 
             def open_reports_dir():
-                import os, platform, subprocess
+                import os
+                import platform
+                import subprocess
                 from src.utils.config import get_config
                 p = get_config().reports_dir
                 p.mkdir(parents=True, exist_ok=True)

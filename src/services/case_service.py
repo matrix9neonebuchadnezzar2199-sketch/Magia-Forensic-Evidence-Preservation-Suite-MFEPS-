@@ -2,7 +2,6 @@
 MFEPS v2.1.0 — 案件管理 / 証拠品管理サービス
 """
 import logging
-from datetime import datetime, timezone
 from typing import Optional
 
 from sqlalchemy.exc import IntegrityError

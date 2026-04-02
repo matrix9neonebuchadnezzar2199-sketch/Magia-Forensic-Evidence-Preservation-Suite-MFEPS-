@@ -4,14 +4,13 @@ MFEPS v2.1.0 — USB/HDD ウィザードページ
 """
 import asyncio
 import logging
-import uuid
 
 from nicegui import ui, app
 
 logger = logging.getLogger("mfeps.ui.usb_hdd")
 from src.core.device_detector import detect_block_devices, DeviceInfo
 from src.utils.format_helpers import format_capacity
-from src.core.write_blocker import check_write_protection, get_protection_badge
+from src.core.write_blocker import check_write_protection
 from src.ui.components.progress_panel import (
     render_progress_panel,
     render_hash_comparison,
@@ -19,7 +18,6 @@ from src.ui.components.progress_panel import (
     render_hash_display,
     render_incomplete_files_warning,
 )
-from src.ui.layout import create_layout
 from src.services.imaging_service import get_imaging_service
 from src.ui.session_auth import get_current_actor_name
 
@@ -117,7 +115,10 @@ def build_usb_hdd_page():
                         format_values.append("e01")
 
                     format_select = ui.select(
-                        options={v: l for v, l in zip(format_values, format_options)},
+                        options={
+                            v: label
+                            for v, label in zip(format_values, format_options)
+                        },
                         value="raw",
                     ).classes("min-w-48")
 
@@ -212,7 +213,7 @@ def build_usb_hdd_page():
 
             with ui.stepper_navigation():
                 ui.button("← 戻る", on_click=stepper.previous).props("flat")
-                
+
                 async def start_copy():
                     if not state["selected_device"]:
                         ui.notify("デバイスが選択されていません", type="negative")
@@ -371,11 +372,11 @@ def build_usb_hdd_page():
             def build_result_page():
                 result_container.clear()
                 res = state.get("result", {})
-                
+
                 with result_container:
                     if res.get("status") == "completed":
                         ui.label("イメージングプロセスの結果レポート").classes("text-body1 q-mb-md")
-                        
+
                         # ハッシュ比較
                         src_hashes = res.get("source_hashes", {})
                         ver_hashes = res.get("verify_hashes", {})
@@ -504,7 +505,7 @@ def _render_device_option(dev: DeviceInfo, state: dict, stepper):
     with card:
         with ui.row().classes("items-center gap-2"):
             if not is_system:
-                radio = ui.radio(
+                ui.radio(
                     options=[dev.device_path],
                     on_change=lambda e, d=dev, c=card: _on_device_selected(d, c, state)
                 )

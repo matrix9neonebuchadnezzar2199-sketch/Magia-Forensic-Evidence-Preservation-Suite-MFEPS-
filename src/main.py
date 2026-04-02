@@ -11,7 +11,6 @@ MFEPS v2.1.0 — エントリーポイント
 """
 import asyncio
 import ctypes
-import logging
 import os
 import secrets
 import sys
@@ -38,7 +37,6 @@ from src.utils.folder_manager import ensure_project_structure
 from src.utils.logger import setup_logging, get_logger
 from src.models.database import init_database
 from src.services.auth_service import ensure_default_admin
-from src.ui.theme.modern_dark import CUSTOM_CSS, QUASAR_BRAND_COLORS
 from src.ui.layout import create_layout
 from src.ui.pages.login import build_login_page
 from src.ui.pages.dashboard import build_dashboard

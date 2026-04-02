@@ -56,10 +56,9 @@ def render_block_device_card(device: DeviceInfo, on_click=None):
 
 def render_optical_drive_card(drive: OpticalDriveInfo, on_click=None):
     """光学ドライブカードを描画"""
-    media_color = "positive" if drive.media_loaded else "grey"
 
     with ui.card().classes("q-pa-sm q-mb-xs cursor-pointer full-width").style(
-            f"border-left: 3px solid rgba(108, 99, 255, 0.3);"):
+            "border-left: 3px solid rgba(108, 99, 255, 0.3);"):
 
         if on_click and drive.media_loaded:
             ui.card().on("click", lambda d=drive: on_click(d))

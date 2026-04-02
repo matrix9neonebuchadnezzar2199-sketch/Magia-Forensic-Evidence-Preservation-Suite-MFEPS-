@@ -3,7 +3,6 @@ import asyncio
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
-import pytest
 
 from src.core.e01_writer import E01Writer
 from tests.test_ewfinfo import TestEwfinfoParser

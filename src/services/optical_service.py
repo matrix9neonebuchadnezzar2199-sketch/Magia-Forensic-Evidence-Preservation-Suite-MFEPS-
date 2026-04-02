@@ -25,6 +25,7 @@ from src.utils.incomplete_file_reporting import (
     append_incomplete_files_report,
     incomplete_reason_from_job_status,
 )
+from src.utils.long_path import maybe_extend_path
 from src.utils.output_path_helpers import resolve_safe_output_path
 from src.utils.path_sanitize import sanitize_path_component
 
@@ -69,7 +70,7 @@ class OpticalService:
         from src.services.case_service import CaseService, EvidenceService
         case_svc = CaseService()
         ev_svc = EvidenceService()
-        
+
         real_case_id = case_svc.get_or_create_case(case_number=case_id)
         real_evidence_id = ev_svc.get_or_create_evidence(
             case_id=real_case_id,
@@ -80,9 +81,9 @@ class OpticalService:
 
         safe_case = sanitize_path_component(case_id)
         safe_ev = sanitize_path_component(evidence_id)
-        output_dir = config.output_dir / safe_case / safe_ev
+        output_dir = maybe_extend_path(config.output_dir / safe_case / safe_ev)
         output_dir.mkdir(parents=True, exist_ok=True)
-        
+
         ext = ".iso" if output_format.upper() == "ISO" else ".dd"
         output_path = str(resolve_safe_output_path(output_dir, "image", ext))
 
@@ -201,6 +202,21 @@ class OpticalService:
         self._update_job_status(job_id, "imaging", started_at=start_time)
         self._progress[job_id]["status"] = "imaging"
 
+        copy_guard_result = None
+        try:
+            from src.core.copy_guard_analyzer import CopyGuardAnalyzer
+
+            copy_guard_result = CopyGuardAnalyzer().analyze(
+                drive_path,
+                analysis,
+                pydvdcss_open_path=pydvdcss_open_path,
+                timeout=30.0,
+            )
+        except Exception as ex:
+            logger.warning(
+                "CopyGuard 分析失敗: %s — 続行します", ex, exc_info=True
+            )
+
         img_result = OpticalImagingResult()
         try:
             img_result = await engine.image_optical(
@@ -215,6 +231,7 @@ class OpticalService:
                 hash_sha256=hash_sha256,
                 hash_sha512=hash_sha512,
                 pydvdcss_open_path=pydvdcss_open_path,
+                copy_guard_result=copy_guard_result,
             )
 
             status = img_result.status

@@ -7,7 +7,7 @@ from nicegui import ui
 
 from src.services.audit_service import get_audit_service
 from src.services.auth_service import get_auth_service
-from src.ui.session_auth import clear_session, is_authenticated, login_user
+from src.ui.session_auth import is_authenticated, login_user
 from src.ui.theme.modern_dark import CUSTOM_CSS
 
 

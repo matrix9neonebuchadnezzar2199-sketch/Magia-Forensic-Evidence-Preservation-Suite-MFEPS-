@@ -9,7 +9,7 @@ import threading
 import time
 from functools import partial
 from pathlib import Path
-from typing import Any, Callable, Optional
+from typing import Any, Callable, Optional, TYPE_CHECKING
 
 from pydantic import BaseModel, Field
 
@@ -25,6 +25,9 @@ from src.core.win32_raw_io import (
 )
 
 logger = logging.getLogger("mfeps.optical_engine")
+
+if TYPE_CHECKING:
+    from src.core.copy_guard_analyzer import CopyGuardResult
 
 # 容量選択・メディア種別のしきい値（バイト）
 # DVD 以上のディスクでは IOCTL が TOC リードアウトより信頼しやすい（CD の 150 セクタ問題は CD 特有）
@@ -333,6 +336,7 @@ class OpticalImagingEngine:
         hash_sha256: bool = True,
         hash_sha512: bool = False,
         pydvdcss_open_path: Optional[str] = None,
+        copy_guard_result: Optional["CopyGuardResult"] = None,
     ) -> OpticalImagingResult:
         self._cancel_event.clear()
         self._pause_event.set()
@@ -352,6 +356,7 @@ class OpticalImagingEngine:
                 hash_sha256,
                 hash_sha512,
                 pydvdcss_open_path,
+                copy_guard_result,
             ),
         )
 
@@ -383,12 +388,14 @@ class OpticalImagingEngine:
         hash_sha256: bool = True,
         hash_sha512: bool = False,
         pydvdcss_open_path: Optional[str] = None,
+        copy_guard_result: Optional["CopyGuardResult"] = None,
     ) -> OpticalImagingResult:
         """
         光学メディアをイメージングする。
 
         use_pydvdcss: DvdCssReader（CSS）。use_aacs: AacsReader（AACS）。
         いずれも初期化失敗時は RAW にフォールバック。
+        copy_guard_result: CopyGuardAnalyzer の結果に基づき復号フラグを補正可能。
         """
         try:
             output_path = os.fspath(output_path)
@@ -422,6 +429,32 @@ class OpticalImagingEngine:
             f"sectors={total_sectors}, sector_size={sector_size}, "
             f"use_pydvdcss={use_pydvdcss}, use_aacs={use_aacs}"
         )
+
+        if copy_guard_result is not None:
+            from src.models.enums import CopyGuardType
+
+            for prot in copy_guard_result.protections:
+                t = prot.type
+                if (
+                    t == CopyGuardType.CSS.value
+                    and prot.detected
+                    and prot.can_decrypt
+                ):
+                    if not use_pydvdcss:
+                        logger.info(
+                            "CopyGuard: CSS 検出かつ復号可能 — pydvdcss を有効化します"
+                        )
+                    use_pydvdcss = True
+                if (
+                    t == CopyGuardType.AACS.value
+                    and prot.detected
+                    and not prot.can_decrypt
+                ):
+                    if use_aacs:
+                        logger.warning(
+                            "CopyGuard: AACS 検出だが復号不可 — RAW にフォールバックします"
+                        )
+                    use_aacs = False
 
         if total_sectors <= 0:
             logger.error(

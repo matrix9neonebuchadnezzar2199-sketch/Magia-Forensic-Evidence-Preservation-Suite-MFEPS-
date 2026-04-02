@@ -9,7 +9,6 @@ from src.core.e01_writer import E01Params, E01Writer
 from src.services.imaging_service import _parse_e01_remaining_to_seconds
 from src.utils.constants import (
     E01_ACQUIRED_PATTERN,
-    E01_BYTES_PATTERN,
     E01_PROGRESS_PATTERN,
     E01_SPEED_PATTERN,
     EWFVERIFY_COMPUTED_HASH_PATTERN,

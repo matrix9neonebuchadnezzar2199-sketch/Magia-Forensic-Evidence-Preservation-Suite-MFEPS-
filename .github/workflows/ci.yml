@@ -1,0 +1,48 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  lint:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install tooling
+        run: pip install ruff
+      - name: Ruff check
+        run: ruff check src tests
+
+  test:
+    runs-on: windows-latest
+    strategy:
+      matrix:
+        python-version: ["3.11", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+      # 全体カバレッジは UI / 未テストモジュール含み。70% は Phase 5 で段階的に引き上げ。
+      - name: Pytest with coverage
+        run: >
+          pytest tests/
+          --cov=src
+          --cov-report=xml
+          --cov-report=term-missing
+          --cov-fail-under=35
+          -v
+          --tb=short
+        env:
+          MFEPS_OUTPUT_DIR: ./test_output
+          MFEPS_LOG_LEVEL: DEBUG

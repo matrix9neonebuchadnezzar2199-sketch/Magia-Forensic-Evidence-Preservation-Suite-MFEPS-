@@ -117,7 +117,7 @@ class ImagingService:
         from src.services.case_service import CaseService, EvidenceService
         case_svc = CaseService()
         ev_svc = EvidenceService()
-        
+
         real_case_id = case_svc.get_or_create_case(case_number=case_id)
         real_evidence_id = ev_svc.get_or_create_evidence(
             case_id=real_case_id,

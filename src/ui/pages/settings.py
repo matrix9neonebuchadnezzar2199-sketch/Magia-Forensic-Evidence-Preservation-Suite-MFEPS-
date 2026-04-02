@@ -30,7 +30,7 @@ def build_settings():
     # ストレージから前回値を復元（なければデフォルト）
     stored = app.storage.general
     current_font = stored.get("font_size", config.mfeps_font_size)
-    current_theme = stored.get("theme", config.mfeps_theme)
+    stored.get("theme", config.mfeps_theme)
     current_buffer = stored.get("buffer_label", "1 MiB")
     current_error_action = stored.get("error_action", "ゼロ埋め+続行")
     current_output = stored.get("output_dir", str(config.mfeps_output_dir))
@@ -173,7 +173,7 @@ def build_settings():
 
         with ui.row().classes("items-center gap-4"):
             ui.label("バッファサイズ:").classes("text-body2")
-            buffer_select = ui.select(
+            ui.select(
                 options=list(BUFFER_SIZE_OPTIONS.keys()),
                 value=current_buffer,
                 on_change=lambda e: stored.update({"buffer_label": e.sender.value})
@@ -181,7 +181,7 @@ def build_settings():
 
         with ui.row().classes("items-center gap-4 q-mt-sm"):
             ui.label("エラー時動作:").classes("text-body2")
-            error_select = ui.select(
+            ui.select(
                 options=["ゼロ埋め+続行", "スキップ+続行", "停止"],
                 value=current_error_action,
                 on_change=lambda e: stored.update({"error_action": e.sender.value})
@@ -189,7 +189,7 @@ def build_settings():
 
         with ui.row().classes("items-center gap-4 q-mt-sm"):
             ui.label("出力先デフォルト:").classes("text-body2")
-            output_input = ui.input(
+            ui.input(
                 value=current_output,
                 on_change=lambda e: stored.update({"output_dir": e.sender.value})
             ).classes("flex-grow")
@@ -217,11 +217,11 @@ def build_settings():
     with ui.card().classes("q-pa-md full-width q-mb-md"):
         ui.label("■ 検証オプション").classes("text-subtitle1 text-weight-bold q-mb-sm")
 
-        rfc3161_switch = ui.switch("RFC3161 タイムスタンプ取得", value=current_rfc3161,
+        ui.switch("RFC3161 タイムスタンプ取得", value=current_rfc3161,
             on_change=lambda e: stored.update({"rfc3161_enabled": e.sender.value}))
         with ui.row().classes("items-center gap-4 q-ml-lg q-mt-xs"):
             ui.label("TSA サーバー:").classes("text-body2")
-            tsa_input = ui.input(
+            ui.input(
                 value=current_tsa,
                 on_change=lambda e: stored.update({"tsa_url": e.sender.value})
             ).classes("flex-grow")

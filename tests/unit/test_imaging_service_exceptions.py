@@ -1,6 +1,6 @@
 """Phase 3-5: ImagingService _run_imaging exception handling"""
 import asyncio
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 

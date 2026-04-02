@@ -68,7 +68,7 @@ def detect_block_devices() -> list[DeviceInfo]:
         stdout = result.stdout.strip()
         if not stdout:
             return devices
-            
+
         try:
             data = json.loads(stdout)
         except json.JSONDecodeError as e:
@@ -192,7 +192,7 @@ def detect_optical_drives() -> list[OpticalDriveInfo]:
         stdout = result.stdout.strip()
         if not stdout:
             return drives
-            
+
         try:
             data = json.loads(stdout)
         except json.JSONDecodeError as e:

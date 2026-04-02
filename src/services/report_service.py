@@ -5,7 +5,7 @@ Jinja2 テンプレート + ReportLab PDF
 import json
 import logging
 import os
-from datetime import datetime, timezone
+from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
@@ -83,7 +83,6 @@ class ReportService:
 
         try:
             from reportlab.lib.pagesizes import A4
-            from reportlab.lib.units import mm
             from reportlab.pdfgen import canvas
             from reportlab.lib.colors import HexColor
 

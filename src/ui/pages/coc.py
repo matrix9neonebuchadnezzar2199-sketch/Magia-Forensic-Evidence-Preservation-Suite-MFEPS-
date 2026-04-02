@@ -56,10 +56,10 @@ def build_coc_page():
             with timeline_container:
                 ui.label("証拠品を選択するとタイムラインが表示されます").classes("text-caption text-grey-6")
             return
-            
+
         coc_svc = CoCService()
         entries = coc_svc.get_entries(state["selected_evidence"])
-        
+
         with timeline_container:
             if not entries:
                 ui.label("この証拠品の履歴はまだありません").classes("text-caption text-grey-5")
@@ -84,7 +84,7 @@ def build_coc_page():
             if not state.get("selected_evidence"):
                 ui.notify("証拠品を選択してください", type="warning")
                 return
-            
+
             with ui.dialog() as dialog, ui.card():
                 ui.label("手動エントリの追加").classes("text-h6")
                 action_input = ui.input("アクション名 (例: 移管, 鑑定)")
@@ -96,9 +96,9 @@ def build_coc_page():
                         if action_input.value and actor_input.value:
                             coc_svc = CoCService()
                             coc_svc.add_entry(
-                                state["selected_evidence"], 
-                                action_input.value, 
-                                actor_input.value, 
+                                state["selected_evidence"],
+                                action_input.value,
+                                actor_input.value,
                                 desc_input.value or ""
                             )
                             ui.notify("CoCエントリを追加しました", type="positive")
@@ -107,7 +107,7 @@ def build_coc_page():
                         else:
                             ui.notify("アクション名と実行者名は必須です", type="negative")
                     ui.button("追加", on_click=_submit).props("unelevated color=primary")
-            
+
             dialog.open()
 
         def export_json():
@@ -116,7 +116,7 @@ def build_coc_page():
             coc_svc = CoCService()
             data = coc_svc.export(state["selected_evidence"], format="json")
             ui.download(data.encode("utf-8"), filename=f"coc_export_{state['selected_evidence']}.json")
-            
+
         def export_csv():
             if not state.get("selected_evidence"):
                 return ui.notify("証拠品を選択してください", type="warning")
