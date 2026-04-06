@@ -36,6 +36,15 @@ set "MFEPS_LOG=%TEMP%\mfeps_start.log"
 echo [%date% %time%] MFEPS start.bat :run> "%MFEPS_LOG%"
 echo CD=%CD%>> "%MFEPS_LOG%"
 
+REM 既定ポート 8580 が LISTEN 中なら警告（別の MFEPS が残っている可能性）
+netstat -ano 2>nul | findstr ":8580" | findstr "LISTENING" >nul
+if not errorlevel 1 (
+    echo [WARN] ポート 8580 が既に使用されています。先に起動中の MFEPS を終了するか、
+    echo       環境変数 MFEPS_PORT で別ポートを指定してください。
+    echo       例: set MFEPS_PORT=8581
+    echo.
+)
+
 if exist "runtime\python.exe" (
     echo [INFO] ポータブル Python を使用します
     echo runtime\python.exe>> "%MFEPS_LOG%"
@@ -76,15 +85,13 @@ if not "!EXITCODE!"=="0" goto :pyerr
 
 :done_ok
 echo.
-echo [INFO] MFEPS を終了しました。
-echo ログ: %MFEPS_LOG%
+echo [INFO] MFEPS を終了しました。ログ: %MFEPS_LOG%
 pause
 exit /b 0
 
 :pyerr
 echo.
-echo [ERROR] 起動に失敗しました。
-echo ログ: %MFEPS_LOG%
+echo [ERROR] 起動に失敗しました。ログ: %MFEPS_LOG%
 if exist "%MFEPS_LOG%" type "%MFEPS_LOG%"
 pause
 exit /b 1
