@@ -7,6 +7,7 @@ from src.models.database import session_scope
 from src.models.schema import ImagingJob
 from src.services.case_service import CaseService, EvidenceService
 from src.utils.rbac import has_permission, require_role
+from src.utils.constants import COLOR_PRIMARY_RGB
 
 
 def build_cases_page():
@@ -111,7 +112,7 @@ def _render_case_card(case_data: dict, refresh_fn):
 def _render_evidence_row(ev: dict):
     """証拠品行を描画（ジョブ一覧含む）"""
     with ui.card().classes("q-pa-sm full-width q-mb-xs").style(
-        "border-left: 3px solid rgba(108, 99, 255, 0.3);"
+        f"border-left: 3px solid rgba({COLOR_PRIMARY_RGB}, 0.3);"
     ):
         ui.label(
             f"💾 {ev['evidence_number']} ({ev.get('media_type') or '—'})"

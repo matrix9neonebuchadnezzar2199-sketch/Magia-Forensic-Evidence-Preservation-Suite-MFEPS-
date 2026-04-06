@@ -29,6 +29,8 @@ from src.utils.long_path import maybe_extend_path
 from src.utils.output_path_helpers import resolve_safe_output_path
 from src.utils.path_sanitize import sanitize_path_component
 from src.utils.rfc3161_client import RFC3161Client
+from src.services.coc_service import record_imaging_job_cancelled_coc
+from src.ui.session_auth import get_current_actor_name
 
 logger = logging.getLogger("mfeps.optical_service")
 
@@ -530,6 +532,8 @@ class OpticalService:
         engine = self._engines.get(job_id)
         if engine:
             await engine.cancel()
+            self._update_job_status(job_id, "cancelled")
+            record_imaging_job_cancelled_coc(job_id, get_current_actor_name())
 
     async def pause_imaging(self, job_id: str):
         engine = self._engines.get(job_id)

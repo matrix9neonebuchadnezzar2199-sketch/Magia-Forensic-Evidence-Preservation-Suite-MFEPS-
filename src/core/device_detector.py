@@ -234,5 +234,63 @@ def _parse_optical_json(data: dict, index: int) -> Optional[OpticalDriveInfo]:
         return None
 
 
+def storage_interface_icon(dev: DeviceInfo) -> str:
+    """
+    UI アイコン名（Quasar Material）。
+    WMI では NVMe も InterfaceType=SCSI になるため、モデル名で NVMe を優先する。
+    USB 接続はモデルより優先（外付け NVMe ケース等）。
+    """
+    m = (dev.model or "").upper()
+    iface = (dev.interface_type or "").upper()
+    med = (dev.media_type or "").upper()
+    if "USB" in iface or "USB" in med:
+        return "usb"
+    if "NVME" in m:
+        return "memory"
+    if "SSD" in m:
+        return "sd_storage"
+    return "hard_drive"
+
+
+def storage_interface_label(dev: DeviceInfo) -> str:
+    """UI 表示用: NVMe / USB / SATA SSD / HDD など短い日本語ラベル。"""
+    m = (dev.model or "").upper()
+    iface = (dev.interface_type or "").upper()
+    med = (dev.media_type or "").upper()
+
+    if "USB" in iface or "USB" in med:
+        if "NVME" in m:
+            return "USB（NVMe 外付け）"
+        if "SSD" in m:
+            return "USB（SSD）"
+        return "USB 接続"
+
+    if "NVME" in m:
+        return "NVMe（M.2 / 内蔵）"
+
+    if "IDE" in iface or "ATA" in iface:
+        if "SSD" in m:
+            return "SATA SSD"
+        return "SATA HDD"
+
+    if "SCSI" in iface:
+        if "SSD" in m and "NVME" not in m:
+            return "SATA SSD"
+        if "SSD" in m:
+            return "SSD（内蔵）"
+        return "内蔵（SCSI / SAS）"
+
+    if "REMOVABLE" in med and "FIXED" not in med:
+        return "リムーバブル"
+
+    if "FIXED" in med or "HARD" in med:
+        if "SSD" in m:
+            return "内蔵 SSD"
+        return "内蔵 HDD"
+
+    parts = [x.strip() for x in (dev.interface_type, dev.media_type) if (x or "").strip()]
+    return " / ".join(parts) if parts else "—"
+
+
 # 後方互換: format_capacity は src.utils.format_helpers へ移動済み
 from src.utils.format_helpers import format_capacity  # noqa: F401

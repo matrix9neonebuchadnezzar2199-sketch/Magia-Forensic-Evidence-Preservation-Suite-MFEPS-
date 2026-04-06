@@ -14,6 +14,7 @@ import ctypes
 import os
 import secrets
 import sys
+import webbrowser
 from pathlib import Path
 
 # パス設定（src/ をインポートルートに追加）
@@ -35,7 +36,7 @@ from nicegui import ui, app
 
 from src.utils.config import get_config
 from src.utils.user_settings import apply_user_settings_to_environ, merge_file_into_storage
-from src.utils.constants import APP_VERSION
+from src.utils.constants import APP_VERSION, APP_WINDOW_TITLE
 from src.utils.folder_manager import ensure_project_structure
 from src.utils.logger import setup_logging, get_logger
 from src.utils.nicegui_loop import set_nicegui_loop
@@ -167,6 +168,21 @@ def main():
         if hasattr(loop, "set_exception_handler"):
             loop.set_exception_handler(_proactor_exception_handler)
 
+        def _open_browser_once() -> None:
+            url = f"http://127.0.0.1:{config.mfeps_port}/"
+            try:
+                webbrowser.open(url)
+                logger.info("ブラウザを開きました: %s", url)
+            except Exception as ex:
+                logger.warning("ブラウザ自動起動に失敗しました: %s", ex)
+
+        # ui.timer はクライアントスロットが必要なため on_startup では使えない
+        async def _delayed_open_browser() -> None:
+            await asyncio.sleep(0.45)
+            _open_browser_once()
+
+        asyncio.create_task(_delayed_open_browser())
+
     # 7. ページルーティング
     @ui.page("/login")
     def page_login():
@@ -222,8 +238,8 @@ def main():
     ui.run(
         host=config.bind_address,
         port=config.mfeps_port,
-        title="MFEPS — Forensic Evidence Preservation Suite",
-        favicon="🔬",
+        title=APP_WINDOW_TITLE,
+        favicon="⚡",
         dark=True,
         reload=False,
         show=False,

@@ -3,15 +3,22 @@ MFEPS v2.1.0 — デバイスカード UIコンポーネント
 サイドバー内に表示するデバイス情報カード
 """
 from nicegui import ui
-from src.core.device_detector import DeviceInfo, OpticalDriveInfo, format_capacity
+from src.core.device_detector import (
+    DeviceInfo,
+    OpticalDriveInfo,
+    format_capacity,
+    storage_interface_icon,
+    storage_interface_label,
+)
 from src.core.write_blocker import check_write_protection, get_protection_badge
+from src.utils.constants import COLOR_PRIMARY_RGB
 
 
 def render_block_device_card(device: DeviceInfo, on_click=None):
     """USB/HDD デバイスカードを描画"""
     # システムドライブ判定
     is_system = device.is_system_drive
-    border_color = "#FF5252" if is_system else "rgba(108, 99, 255, 0.3)"
+    border_color = "#FF5252" if is_system else f"rgba({COLOR_PRIMARY_RGB}, 0.3)"
 
     with ui.card().classes("q-pa-sm q-mb-xs cursor-pointer full-width").style(
             f"border-left: 3px solid {border_color};"):
@@ -21,12 +28,14 @@ def render_block_device_card(device: DeviceInfo, on_click=None):
 
         # 上段: アイコン + デバイス名
         with ui.row().classes("items-center gap-2"):
-            icon = "usb" if "USB" in device.interface_type.upper() else "hard_drive"
-            ui.icon(icon).classes("text-lg")
+            ui.icon(storage_interface_icon(device)).classes("text-lg")
             ui.label(device.device_path.replace("\\\\.\\", "")).classes(
                 "text-weight-bold text-body2")
 
-        # 中段: モデル・シリアル・容量
+        # 中段: 種別ラベル + モデル・シリアル・容量
+        ui.label(storage_interface_label(device)).classes(
+            "text-caption text-weight-medium q-ml-lg"
+        ).style("color: var(--mfeps-text-secondary);")
         ui.label(device.model).classes("text-caption text-grey-5 q-ml-lg")
 
         with ui.row().classes("q-ml-lg gap-2 items-center"):
@@ -58,7 +67,7 @@ def render_optical_drive_card(drive: OpticalDriveInfo, on_click=None):
     """光学ドライブカードを描画"""
 
     with ui.card().classes("q-pa-sm q-mb-xs cursor-pointer full-width").style(
-            "border-left: 3px solid rgba(108, 99, 255, 0.3);"):
+            f"border-left: 3px solid rgba({COLOR_PRIMARY_RGB}, 0.3);"):
 
         if on_click and drive.media_loaded:
             ui.card().on("click", lambda d=drive: on_click(d))

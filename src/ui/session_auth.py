@@ -64,12 +64,20 @@ def login_user(user_dict: dict[str, Any]) -> None:
     app.storage.user["login_at"] = now.isoformat()
 
 
-def get_current_role() -> str:
-    """現在セッションのロール（未ログイン時は viewer）"""
+def get_current_role() -> str | None:
+    """
+    現在セッションのロール。
+    未ログイン・セッション無効時は None（viewer へフォールバックしない）。
+    """
+    if not is_authenticated():
+        return None
     try:
-        return str(app.storage.user.get("role", "viewer"))
+        r = app.storage.user.get("role")
+        if r is None or r == "":
+            return "examiner"
+        return str(r)
     except Exception:
-        return "viewer"
+        return None
 
 
 def check_session_valid() -> bool:

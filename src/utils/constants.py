@@ -7,6 +7,10 @@ import re
 APP_NAME = "MFEPS"
 APP_FULL_NAME = "Magia Forensic Evidence Preservation Suite"
 APP_VERSION = "2.4.0"
+# 起動画面・ヘッダー向け（短くインパクトのある表示名）
+APP_BRAND_DISPLAY = "MAGIA"
+APP_BRAND_TAGLINE = "Evidence Command Center"
+APP_WINDOW_TITLE = f"{APP_BRAND_DISPLAY} — {APP_BRAND_TAGLINE}"
 APP_TITLE = f"{APP_NAME} — Forensic Evidence Preservation Suite v{APP_VERSION}"
 
 # デフォルト設定値
@@ -62,20 +66,22 @@ GENESIS_HASH_INPUT = "GENESIS"
 DVD5_TARGET_BYTES = 4_700_000_000  # DVD-5 (4.7 GB)
 DVD9_TARGET_BYTES = 8_500_000_000  # DVD-9 (8.5 GB)
 
-# UI カラー定数
-COLOR_PRIMARY = "#6C63FF"
-COLOR_SECONDARY = "#3D3D5C"
-COLOR_BACKGROUND = "#0F0F1A"
-COLOR_SURFACE = "#1A1A2E"
-COLOR_HEADER = "#16213E"
-COLOR_SIDEBAR = "#0F0F1A"
-COLOR_SUCCESS = "#00E676"
-COLOR_WARNING = "#FFD600"
+# UI カラー定数（Cursor 系デザイン: awesome-design-md design-md/cursor）
+COLOR_PRIMARY = "#f54e00"
+COLOR_SECONDARY = "#403e39"
+COLOR_BACKGROUND = "#1a1915"
+COLOR_SURFACE = "#2a2925"
+COLOR_HEADER = "#1a1915"
+COLOR_SIDEBAR = "#1a1915"
+COLOR_SUCCESS = "#22c55e"
+COLOR_WARNING = "#eab308"
 INCOMPLETE_FILE_ACCENT = "#FF9800"  # 不完全出力ファイル警告の左ボーダー
-COLOR_ERROR = "#FF5252"
-COLOR_INFO = "#448AFF"
-COLOR_TEXT_PRIMARY = "#E0E0E0"
-COLOR_TEXT_SECONDARY = "#9E9E9E"
+COLOR_ERROR = "#cf2d56"
+COLOR_INFO = "#3b82f6"
+COLOR_TEXT_PRIMARY = "#e6e5e0"
+COLOR_TEXT_SECONDARY = "#9e9d99"
+# アクセントの rgba（ボーダー・ホバー用、CSS と Python の両方で参照）
+COLOR_PRIMARY_RGB = "245, 78, 0"
 
 # =====================================================================
 # E01 (ewfacquire) 定数

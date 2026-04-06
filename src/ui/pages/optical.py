@@ -15,6 +15,10 @@ from src.ui.components.legal_consent_dialog import (
     show_legal_consent_dialog,
 )
 from src.ui.session_auth import get_current_actor_name
+from src.utils.default_identifiers import (
+    apply_default_case_evidence_inputs,
+    optical_media_tag_for_default,
+)
 from src.utils.rbac import require_role
 
 
@@ -112,6 +116,12 @@ def build_optical_page():
                         ui.label(f"容量: {analysis.capacity_bytes / (1024**3):.2f} GiB").classes("text-caption text-grey-6")
                         render_copy_guard_badges(guard_result.protections)
 
+                    apply_default_case_evidence_inputs(
+                        case_input,
+                        ev_input,
+                        optical_media_tag_for_default(analysis),
+                    )
+
                 ui.button("次へ →", on_click=on_step1_next, color="primary").props("unelevated")
 
         # ===== STEP 2: プリスキャン + コピーガード解析 =====
@@ -123,11 +133,15 @@ def build_optical_page():
 
                 with ui.row().classes("gap-4 items-center"):
                     ui.label("案件番号:").classes("text-body2")
-                    case_input = ui.input(placeholder="CASE-001").classes("min-w-48")
+                    case_input = ui.input(
+                        placeholder="20260405-0958_DVD"
+                    ).classes("min-w-48")
 
                 with ui.row().classes("gap-4 items-center q-mt-sm"):
                     ui.label("証拠品番号:").classes("text-body2")
-                    ev_input = ui.input(placeholder="EV-001").classes("min-w-48")
+                    ev_input = ui.input(
+                        placeholder="20260405-0958_DVD"
+                    ).classes("min-w-48")
 
                 with ui.row().classes("gap-4 items-center q-mt-sm"):
                     ui.label("出力形式:").classes("text-body2")

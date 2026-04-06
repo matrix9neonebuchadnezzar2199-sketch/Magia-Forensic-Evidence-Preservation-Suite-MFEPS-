@@ -10,7 +10,12 @@ from nicegui import ui, app
 
 logger = logging.getLogger("mfeps.ui.usb_hdd")
 
-from src.core.device_detector import detect_block_devices, DeviceInfo
+from src.core.device_detector import (
+    DeviceInfo,
+    detect_block_devices,
+    storage_interface_icon,
+    storage_interface_label,
+)
 from src.utils.format_helpers import format_capacity
 from src.core.write_blocker import check_write_protection
 from src.ui.components.progress_panel import (
@@ -24,7 +29,9 @@ from src.services.imaging_service import get_imaging_service
 from src.ui.session_auth import get_current_actor_name
 from src.utils.i18n import t as i18n_t
 from src.utils.nicegui_loop import get_nicegui_loop
+from src.utils.default_identifiers import apply_default_case_evidence_inputs
 from src.utils.rbac import require_role
+from src.utils.constants import COLOR_PRIMARY, COLOR_PRIMARY_RGB
 
 
 def build_usb_hdd_page():
@@ -111,6 +118,9 @@ def build_usb_hdd_page():
                 async def on_step1_next():
                     await check_write_block_status()
                     stepper.next()
+                    apply_default_case_evidence_inputs(
+                        case_input, ev_input, "USB"
+                    )
 
                 step1_next_btn = ui.button(
                     "次へ →", on_click=on_step1_next, color="primary"
@@ -129,11 +139,15 @@ def build_usb_hdd_page():
 
                 with ui.row().classes("gap-4 items-center"):
                     ui.label("案件番号:").classes("text-body2")
-                    case_input = ui.input(placeholder="CASE-001").classes("min-w-48")
+                    case_input = ui.input(
+                        placeholder="20260406-1705_USB"
+                    ).classes("min-w-48")
 
                 with ui.row().classes("gap-4 items-center q-mt-sm"):
                     ui.label("証拠品番号:").classes("text-body2")
-                    ev_input = ui.input(placeholder="EV-001").classes("min-w-48")
+                    ev_input = ui.input(
+                        placeholder="20260406-1705_USB"
+                    ).classes("min-w-48")
 
                 verify_checkbox = ui.checkbox("コピー後にハッシュ検証を実行", value=True).classes("q-mt-sm")
 
@@ -557,7 +571,7 @@ def build_usb_hdd_page():
 def _render_device_option(dev: DeviceInfo, state: dict, stepper):
     """デバイス選択オプションを表示"""
     is_system = dev.is_system_drive
-    border_color = "#FF5252" if is_system else "rgba(108, 99, 255, 0.3)"
+    border_color = "#FF5252" if is_system else f"rgba({COLOR_PRIMARY_RGB}, 0.3)"
 
     card = ui.card().classes("q-pa-sm cursor-pointer full-width device-option").style(
         f"border-left: 3px solid {border_color}; transition: opacity 0.3s ease, border-color 0.3s ease;")
@@ -569,11 +583,13 @@ def _render_device_option(dev: DeviceInfo, state: dict, stepper):
                     options=[dev.device_path],
                     on_change=lambda e, d=dev, c=card: _on_device_selected(d, c, state)
                 )
-            icon = "usb" if "USB" in dev.interface_type.upper() else "storage"
-            ui.icon(icon)
+            ui.icon(storage_interface_icon(dev))
             ui.label(f"{dev.device_path.replace(chr(92)*2+'.'+chr(92), '')}").classes(
                 "text-weight-bold")
 
+        ui.label(storage_interface_label(dev)).classes(
+            "text-caption text-weight-medium q-ml-lg"
+        ).style("color: var(--mfeps-text-secondary);")
         ui.label(f"{dev.model}").classes("text-caption text-grey-5 q-ml-lg")
 
         with ui.row().classes("q-ml-lg gap-2"):
@@ -598,14 +614,14 @@ def _on_device_selected(dev: DeviceInfo, selected_card, state: dict):
             if child == selected_card:
                 # 選択されたカード: ハイライト
                 child.style(
-                    replace="border-left: 3px solid #6C63FF; "
+                    replace=f"border-left: 3px solid {COLOR_PRIMARY}; "
                     "opacity: 1; "
-                    "box-shadow: 0 0 12px rgba(108, 99, 255, 0.4); "
+                    f"box-shadow: 0 0 12px rgba({COLOR_PRIMARY_RGB}, 0.4); "
                     "transition: opacity 0.3s ease, border-color 0.3s ease;")
             else:
                 # 非選択カード: 薄く表示
                 child.style(
-                    replace="border-left: 3px solid rgba(108, 99, 255, 0.1); "
+                    replace=f"border-left: 3px solid rgba({COLOR_PRIMARY_RGB}, 0.1); "
                     "opacity: 0.4; "
                     "transition: opacity 0.3s ease, border-color 0.3s ease;")
 

@@ -3,8 +3,9 @@ MFEPS v2.1.0 — メインレイアウト
 ヘッダー + 折り畳みサイドバー + メインコンテンツ + ステータスバー
 """
 from nicegui import ui, app
+from src.utils.storage_helpers import get_user_storage
 from src.utils.config import get_config
-from src.utils.constants import APP_VERSION
+from src.utils.constants import APP_BRAND_DISPLAY, APP_BRAND_TAGLINE, APP_NAME, APP_VERSION
 from src.ui.theme.modern_dark import CUSTOM_CSS
 from src.ui.theme.light_theme import LIGHT_CSS
 from src.ui.session_auth import require_auth, clear_session
@@ -51,14 +52,16 @@ def create_layout(page_path: str, content_builder):
             ui.button(
                 icon="menu", on_click=lambda: left_drawer.toggle()
             ).props("flat round dense color=white")
-            ui.label("🔬 MFEPS").classes("text-h6 text-weight-bold")
-            ui.label("Forensic Evidence Preservation Suite").classes(
-                "text-caption text-grey-5 gt-sm")
+            ui.label(APP_BRAND_DISPLAY).classes("text-h6 text-weight-bolder").style(
+                "letter-spacing: 0.08em"
+            )
+            ui.label(APP_BRAND_TAGLINE).classes("text-caption text-grey-5 gt-sm")
 
         # 右: ユーザー・ログアウト・設定
         with ui.row().classes("items-center gap-2"):
-            uname = app.storage.user.get("username", "")
-            dname = app.storage.user.get("display_name", uname)
+            u = get_user_storage()
+            uname = u.get("username", "")
+            dname = u.get("display_name", uname)
             ui.label(dname or "User").classes("text-caption text-grey-4 gt-xs")
 
             def _logout():
@@ -173,5 +176,5 @@ def create_layout(page_path: str, content_builder):
         with ui.row().classes("items-center gap-4"):
             ui.label("準備完了")
             ui.space()
-            ui.label(f"MFEPS v{APP_VERSION}").classes("text-grey-6")
+            ui.label(f"{APP_NAME} v{APP_VERSION}").classes("text-grey-6")
 

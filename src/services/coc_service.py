@@ -15,6 +15,33 @@ from src.utils.config import get_config
 logger = logging.getLogger("mfeps.coc_service")
 
 
+def record_imaging_job_cancelled_coc(job_id: str, actor_name: str) -> None:
+    """
+    イメージングキャンセル時の CoC（USB/HDD・光学共通）。
+    job_id から evidence_id を解決して action=cancelled を記録する。
+    """
+    from src.models.database import session_scope
+    from src.models.schema import ImagingJob
+
+    try:
+        with session_scope() as session:
+            job = session.get(ImagingJob, job_id)
+            if not job:
+                logger.warning("CoC cancel: job が見つかりません job_id=%s", job_id)
+                return
+            evidence_id = job.evidence_id
+        svc = CoCService()
+        svc.add_entry(
+            evidence_id,
+            "cancelled",
+            actor_name,
+            "ユーザーによりイメージングがキャンセルされました",
+            {},
+        )
+    except Exception as e:
+        logger.error("CoC cancel 記録失敗: %s", e)
+
+
 class CoCService:
     """Chain of Custody 管理"""
 

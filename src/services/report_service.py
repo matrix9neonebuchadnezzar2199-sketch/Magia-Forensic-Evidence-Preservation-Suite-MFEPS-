@@ -398,7 +398,7 @@ class ReportService:
 <title>MFEPS - デジタル証拠イメージング報告書</title>
 <style>
 body {{ font-family: 'Segoe UI', sans-serif; max-width: 800px; margin: 40px auto; padding: 20px; }}
-h1 {{ color: #6C63FF; border-bottom: 2px solid #6C63FF; padding-bottom: 10px; }}
+h1 {{ color: #f54e00; border-bottom: 2px solid #f54e00; padding-bottom: 10px; }}
 h2 {{ color: #333; margin-top: 30px; }}
 .hash {{ font-family: 'Consolas', monospace; background: #f5f5f5; padding: 2px 6px; }}
 .match {{ color: #00C853; font-weight: bold; }}

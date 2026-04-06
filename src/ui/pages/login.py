@@ -9,6 +9,7 @@ from src.services.audit_service import get_audit_service
 from src.services.auth_service import get_auth_service
 from src.ui.session_auth import is_authenticated, login_user
 from src.ui.theme.modern_dark import CUSTOM_CSS
+from src.utils.constants import APP_BRAND_DISPLAY, APP_BRAND_TAGLINE
 
 
 def build_login_page():
@@ -22,7 +23,10 @@ def build_login_page():
 
     with ui.column().classes("absolute-center items-center q-pa-md"):
         with ui.card().classes("q-pa-xl").style("min-width: 360px;"):
-            ui.label("🔬 MFEPS").classes("text-h5 text-weight-bold q-mb-sm")
+            ui.label(APP_BRAND_DISPLAY).classes("text-h4 text-weight-bolder q-mb-xs").style(
+                "letter-spacing: 0.1em"
+            )
+            ui.label(APP_BRAND_TAGLINE).classes("text-caption text-grey-5 q-mb-md")
             ui.label("ログインが必要です").classes("text-body2 text-grey-5 q-mb-lg")
 
             username_in = ui.input("ユーザー名").props("autofocus").classes("full-width")

@@ -3,12 +3,14 @@ MFEPS v2.1.0 — SQLite データベース接続・初期化
 WALモード, 自動テーブル生成
 """
 import logging
+import threading
 from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Callable
 from sqlalchemy import create_engine, event, text
 from sqlalchemy.engine import Engine
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import sessionmaker, Session
 
 from src.models.schema import Base
@@ -18,7 +20,9 @@ logger = logging.getLogger("mfeps.database")
 _engine = None
 _session_factory = None
 
-_SCHEMA_VERSION = 8  # Phase 10: imaging_jobs.remote_agent_id
+_SCHEMA_VERSION = 9  # クエリ用インデックス（hash_records / imaging_jobs / chain_of_custody）
+
+_db_init_lock = threading.Lock()
 
 
 def _ensure_schema_version_table(engine: Engine) -> None:
@@ -184,6 +188,23 @@ def _migration_8_remote_agent_id(engine: Engine) -> None:
         conn.commit()
 
 
+def _migration_9_query_indexes(engine: Engine) -> None:
+    stmts = [
+        "CREATE INDEX IF NOT EXISTS ix_hash_records_job_id ON hash_records (job_id)",
+        "CREATE INDEX IF NOT EXISTS ix_hash_records_job_target "
+        "ON hash_records (job_id, target)",
+        "CREATE INDEX IF NOT EXISTS ix_imaging_jobs_evidence_id "
+        "ON imaging_jobs (evidence_id)",
+        "CREATE INDEX IF NOT EXISTS ix_chain_of_custody_evidence_id "
+        "ON chain_of_custody (evidence_id)",
+    ]
+    with engine.connect() as conn:
+        for stmt in stmts:
+            conn.execute(text(stmt))
+        conn.commit()
+    logger.info("マイグレーション: 検索用インデックスを確認しました")
+
+
 _MIGRATIONS: dict[int, Callable[[Engine], None]] = {
     1: _migration_1_imaging_write_block,
     2: _migration_2_audit_hash_timestamp,
@@ -193,6 +214,7 @@ _MIGRATIONS: dict[int, Callable[[Engine], None]] = {
     6: _migration_6_noop,
     7: _migration_7_users_is_active,
     8: _migration_8_remote_agent_id,
+    9: _migration_9_query_indexes,
 }
 
 
@@ -213,32 +235,33 @@ def init_database(db_path: Path) -> None:
     """データベースを初期化"""
     global _engine, _session_factory
 
-    if _engine is not None:
-        _engine.dispose()
-        _engine = None
-        _session_factory = None
+    with _db_init_lock:
+        if _engine is not None:
+            _engine.dispose()
+            _engine = None
+            _session_factory = None
 
-    db_path.parent.mkdir(parents=True, exist_ok=True)
+        db_path.parent.mkdir(parents=True, exist_ok=True)
 
-    db_url = f"sqlite:///{db_path}"
-    _engine = create_engine(db_url, echo=False, future=True)
+        db_url = f"sqlite:///{db_path}"
+        _engine = create_engine(db_url, echo=False, future=True)
 
-    # WAL モード設定 + 外部キー有効化
-    @event.listens_for(_engine, "connect")
-    def set_sqlite_pragma(dbapi_connection, connection_record):
-        cursor = dbapi_connection.cursor()
-        cursor.execute("PRAGMA journal_mode=WAL")
-        cursor.execute("PRAGMA foreign_keys=ON")
-        cursor.close()
+        # WAL モード設定 + 外部キー有効化
+        @event.listens_for(_engine, "connect")
+        def set_sqlite_pragma(dbapi_connection, connection_record):
+            cursor = dbapi_connection.cursor()
+            cursor.execute("PRAGMA journal_mode=WAL")
+            cursor.execute("PRAGMA foreign_keys=ON")
+            cursor.close()
 
-    # テーブル自動生成
-    Base.metadata.create_all(_engine)
+        # テーブル自動生成
+        Base.metadata.create_all(_engine)
 
-    _run_migrations(_engine)
+        _run_migrations(_engine)
 
-    _session_factory = sessionmaker(bind=_engine, expire_on_commit=False)
+        _session_factory = sessionmaker(bind=_engine, expire_on_commit=False)
 
-    logger.info(f"データベース初期化完了: {db_path}")
+        logger.info(f"データベース初期化完了: {db_path}")
 
 
 def get_session() -> Session:
@@ -257,8 +280,13 @@ def session_scope():
     try:
         yield session
         session.commit()
-    except Exception:
+    except SQLAlchemyError as e:
         session.rollback()
+        logger.warning("DB rollback (SQLAlchemy): %s", e)
+        raise
+    except Exception as e:
+        session.rollback()
+        logger.warning("DB rollback: %s", e)
         raise
     finally:
         session.close()

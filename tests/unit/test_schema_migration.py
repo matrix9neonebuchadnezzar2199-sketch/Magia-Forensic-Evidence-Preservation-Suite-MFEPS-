@@ -13,7 +13,7 @@ def test_migration_idempotent(tmp_path):
             text("SELECT version FROM schema_version WHERE id = 1")
         ).fetchone()
     assert row is not None
-    assert int(row[0]) == 8
+    assert int(row[0]) == 9
 
 
 def test_schema_version_increments(fresh_db):
@@ -24,4 +24,4 @@ def test_schema_version_increments(fresh_db):
             text("SELECT version FROM schema_version WHERE id = 1")
         ).fetchone()
     assert row is not None
-    assert int(row[0]) == 8
+    assert int(row[0]) == 9

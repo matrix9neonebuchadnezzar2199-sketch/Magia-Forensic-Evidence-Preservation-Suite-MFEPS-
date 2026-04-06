@@ -41,10 +41,18 @@ ACTION_PERMISSIONS = {
 
 
 def _get_user_role() -> str:
+    """未認証時は空文字（階層外）— viewer へフォールバックしない。"""
+    from src.ui.session_auth import is_authenticated
+
+    if not is_authenticated():
+        return ""
     try:
-        return app.storage.user.get("role", "viewer")
+        r = app.storage.user.get("role")
+        if r is None or r == "":
+            return "examiner"
+        return str(r)
     except Exception:
-        return "viewer"
+        return ""
 
 
 def has_permission(required_role: str) -> bool:

@@ -123,6 +123,10 @@ class ImagingJob(Base):
     evidence = relationship("EvidenceItem", back_populates="imaging_jobs")
     hash_records = relationship("HashRecord", back_populates="job", cascade="all, delete-orphan")
 
+    __table_args__ = (
+        Index("ix_imaging_jobs_evidence_id", "evidence_id"),
+    )
+
     def __repr__(self):
         return f"<ImagingJob {self.id[:8]} status={self.status}>"
 
@@ -145,6 +149,11 @@ class HashRecord(Base):
 
     job = relationship("ImagingJob", back_populates="hash_records")
 
+    __table_args__ = (
+        Index("ix_hash_records_job_id", "job_id"),
+        Index("ix_hash_records_job_target", "job_id", "target"),
+    )
+
     def __repr__(self):
         return f"<HashRecord {self.target} md5={self.md5[:8]}...>"
 
@@ -162,6 +171,10 @@ class ChainOfCustody(Base):
     timestamp = Column(DateTime, default=_utcnow)
 
     evidence = relationship("EvidenceItem", back_populates="coc_entries")
+
+    __table_args__ = (
+        Index("ix_chain_of_custody_evidence_id", "evidence_id"),
+    )
 
     def __repr__(self):
         return f"<CoC {self.action} at {self.timestamp}>"

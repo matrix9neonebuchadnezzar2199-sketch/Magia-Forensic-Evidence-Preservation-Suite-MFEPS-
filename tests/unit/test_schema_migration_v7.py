@@ -22,4 +22,4 @@ def test_schema_version_is_current(tmp_path: Path):
     with engine.connect() as conn:
         row = conn.execute(text("SELECT version FROM schema_version")).fetchone()
         assert row is not None
-        assert int(row[0]) == 8
+        assert int(row[0]) == 9

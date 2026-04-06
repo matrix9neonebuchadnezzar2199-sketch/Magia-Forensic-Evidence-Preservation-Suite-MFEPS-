@@ -16,10 +16,10 @@ def test_migration_8_adds_remote_agent_id(tmp_path: Path):
     assert "remote_agent_id" in columns
 
 
-def test_schema_version_is_8(tmp_path: Path):
-    init_database(tmp_path / "ver8.db")
+def test_schema_version_is_9(tmp_path: Path):
+    init_database(tmp_path / "ver9.db")
     engine = get_engine()
     with engine.connect() as conn:
         row = conn.execute(text("SELECT version FROM schema_version")).fetchone()
         assert row is not None
-        assert int(row[0]) == 8
+        assert int(row[0]) == 9

@@ -30,7 +30,9 @@ from src.utils.incomplete_file_reporting import (
 )
 from src.utils.rfc3161_client import RFC3161Client
 from src.utils.db_backup import create_backup
-from src.ui.session_auth import get_current_role
+from src.services.audit_service import get_audit_service
+from src.services.coc_service import record_imaging_job_cancelled_coc
+from src.ui.session_auth import get_current_actor_name, get_current_role
 
 
 def _schedule_progress_publish(job_id: str, payload: dict) -> None:
@@ -287,8 +289,6 @@ class ImagingService:
 
         self._tasks[job_id] = task
 
-        from src.services.audit_service import get_audit_service
-
         get_audit_service().add_entry(
             level="INFO",
             category=AuditCategories.IMAGING_START,
@@ -297,7 +297,7 @@ class ImagingService:
                 {
                     "job_id": job_id,
                     "actor": actor_name,
-                    "role": get_current_role(),
+                    "role": get_current_role() or "unknown",
                     "case": case_id,
                     "evidence": evidence_id,
                     "device": device.device_path,
@@ -323,7 +323,6 @@ class ImagingService:
     ) -> None:
         """E01 イメージング — ewfacquire subprocess"""
         from src.core.e01_writer import E01Params, E01Writer
-        from src.services.audit_service import get_audit_service
 
         audit = get_audit_service()
         config = get_config()
@@ -665,6 +664,7 @@ class ImagingService:
         actor_name = self._job_actors.pop(result.job_id, "MFEPS Auto")
         job = None
         verify_for_cache = result.verify_hashes
+        db_update_failed = False
         try:
             with session_scope() as session:
                 job = session.get(ImagingJob, result.job_id)
@@ -745,7 +745,21 @@ class ImagingService:
                 logger.info(f"DB更新完了: job_id={result.job_id}")
 
         except Exception as e:
+            db_update_failed = True
             logger.error(f"DB更新失敗: {e}")
+            get_audit_service().add_entry(
+                level="ERROR",
+                category=AuditCategories.IMAGING_FAIL,
+                message=f"イメージング完了後のDB更新に失敗: job_id={result.job_id}",
+                detail=json.dumps(
+                    {
+                        "job_id": result.job_id,
+                        "error": str(e),
+                        "engine_status": result.status,
+                    },
+                    ensure_ascii=False,
+                ),
+            )
 
         self._results[result.job_id] = {
             "status": result.status,
@@ -761,6 +775,7 @@ class ImagingService:
             "output_path": result.output_path,
             "error_message": result.error_message or "",
             "incomplete_files": result.incomplete_file_records,
+            "db_update_failed": db_update_failed,
         }
 
         if result.status == "completed":
@@ -857,11 +872,13 @@ class ImagingService:
         if w:
             await w.cancel()
             self._update_job_status(job_id, "cancelled")
+            record_imaging_job_cancelled_coc(job_id, get_current_actor_name())
             return
         engine = self._engines.get(job_id)
         if engine:
             await engine.cancel()
             self._update_job_status(job_id, "cancelled")
+            record_imaging_job_cancelled_coc(job_id, get_current_actor_name())
 
     async def pause_imaging(self, job_id: str) -> None:
         """一時停止"""

@@ -9,6 +9,8 @@ from src.core.device_detector import (
     DeviceInfo,
     detect_block_devices,
     detect_optical_drives,
+    storage_interface_icon,
+    storage_interface_label,
 )
 
 
@@ -176,3 +178,72 @@ def test_parse_optical_json_failure():
             raise ValueError("bad")
 
     assert _parse_optical_json({"Drive": "D:", "MediaLoaded": BadMedia()}, 0) is None
+
+
+def test_storage_interface_nvme_vs_usb():
+    nvme = DeviceInfo(
+        index=2,
+        model="NVMe PC801 NVMe SK hy",
+        interface_type="SCSI",
+        media_type="Fixed hard disk media",
+    )
+    assert storage_interface_icon(nvme) == "memory"
+    assert "NVMe" in storage_interface_label(nvme)
+
+    usb_disk = DeviceInfo(
+        index=3,
+        model="SanDisk Ultra",
+        interface_type="USB",
+        media_type="Removable Media",
+    )
+    assert storage_interface_icon(usb_disk) == "usb"
+    assert "USB" in storage_interface_label(usb_disk)
+
+
+def test_storage_interface_label_fallback():
+    empty = DeviceInfo(index=0, model="", interface_type="", media_type="")
+    assert storage_interface_label(empty) == "—"
+
+
+def test_storage_interface_label_branches():
+    sata_hdd = DeviceInfo(
+        index=0,
+        model="WDC WD10EZEX",
+        interface_type="IDE",
+        media_type="Fixed hard disk media",
+    )
+    assert "SATA HDD" in storage_interface_label(sata_hdd)
+    assert storage_interface_icon(sata_hdd) == "hard_drive"
+
+    sata_ssd = DeviceInfo(
+        index=1,
+        model="Samsung SSD 860",
+        interface_type="IDE",
+        media_type="Fixed",
+    )
+    assert "SATA SSD" in storage_interface_label(sata_ssd)
+
+    scsi_ssd = DeviceInfo(
+        index=2,
+        model="Samsung SSD 870",
+        interface_type="SCSI",
+        media_type="Fixed",
+    )
+    assert "SATA SSD" in storage_interface_label(scsi_ssd)
+
+    usb_nvme = DeviceInfo(
+        index=3,
+        model="NVMe Enclosure",
+        interface_type="USB",
+        media_type="Fixed",
+    )
+    assert "USB（NVMe" in storage_interface_label(usb_nvme)
+    assert storage_interface_icon(usb_nvme) == "usb"
+
+    removable = DeviceInfo(
+        index=4,
+        model="Flash",
+        interface_type="USB",
+        media_type="Removable Media",
+    )
+    assert storage_interface_label(removable).startswith("USB")
