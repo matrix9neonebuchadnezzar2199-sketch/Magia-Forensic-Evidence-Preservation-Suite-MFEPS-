@@ -23,6 +23,7 @@ from src.ui.components.progress_panel import (
 from src.services.imaging_service import get_imaging_service
 from src.ui.session_auth import get_current_actor_name
 from src.utils.i18n import t as i18n_t
+from src.utils.nicegui_loop import get_nicegui_loop
 from src.utils.rbac import require_role
 
 
@@ -78,7 +79,7 @@ def build_usb_hdd_page():
             status_label = ui.label("").classes("text-caption text-grey-6")
 
             def _on_device_event(event_type: str, info: dict) -> None:
-                loop = app.storage.general.get("_nicegui_loop")
+                loop = get_nicegui_loop()
                 if not loop or not loop.is_running():
                     return
                 drive = info.get("drive_name", "")

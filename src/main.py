@@ -38,6 +38,7 @@ from src.utils.user_settings import apply_user_settings_to_environ, merge_file_i
 from src.utils.constants import APP_VERSION
 from src.utils.folder_manager import ensure_project_structure
 from src.utils.logger import setup_logging, get_logger
+from src.utils.nicegui_loop import set_nicegui_loop
 from src.models.database import init_database
 from src.services.auth_service import ensure_default_admin
 from src.services.remote_service import get_remote_service
@@ -148,11 +149,13 @@ def main():
     @app.on_startup
     async def on_startup():
         merge_file_into_storage(app.storage.general, config.data_dir)
+        # 旧版が app.storage に入れていた非 JSON 値の残骸を除去
+        app.storage.general.pop("_nicegui_loop", None)
         app.storage.general["status_text"] = "準備完了"
         app.storage.general["disk_free"] = ""
         app.storage.general["is_admin"] = _admin
         loop = asyncio.get_running_loop()
-        app.storage.general["_nicegui_loop"] = loop
+        set_nicegui_loop(loop)
         from src.utils.i18n import get_i18n
 
         locale = app.storage.general.get("locale", "ja")
