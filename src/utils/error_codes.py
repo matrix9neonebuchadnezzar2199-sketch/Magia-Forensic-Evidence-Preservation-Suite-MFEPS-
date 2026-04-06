@@ -235,6 +235,28 @@ E9003 = ErrorCode(
     "アカウントが無効化されています", Severity.ERROR,
     "管理者に連絡してください")
 
+# ───── E10xxx: リモートイメージング ─────
+E10001 = ErrorCode(
+    "E10001", "Agent connection failed",
+    "エージェント接続に失敗しました", Severity.ERROR,
+    "エージェントの稼働状況とネットワークを確認してください")
+E10002 = ErrorCode(
+    "E10002", "Agent authentication failed",
+    "エージェント認証に失敗しました", Severity.ERROR,
+    "共有シークレットが正しいか確認してください")
+E10003 = ErrorCode(
+    "E10003", "Remote imaging start failed",
+    "リモートイメージング開始に失敗しました", Severity.ERROR,
+    "エージェント側のログを確認してください")
+E10004 = ErrorCode(
+    "E10004", "Agent communication timeout",
+    "エージェント通信がタイムアウトしました", Severity.WARN,
+    "ネットワーク接続を確認してください")
+E10005 = ErrorCode(
+    "E10005", "Remote job not found",
+    "リモートジョブが見つかりません", Severity.ERROR,
+    "ジョブ ID を確認してください")
+
 # 全エラーコードの辞書
 ALL_ERROR_CODES: dict[str, ErrorCode] = {
     ec.code: ec for ec in [
@@ -247,6 +269,7 @@ ALL_ERROR_CODES: dict[str, ErrorCode] = {
         E7001, E7002, E7003, E7004, E7005, E7006,
         E8001, E8002, E8003, E8004,
         E9001, E9002, E9003,
+        E10001, E10002, E10003, E10004, E10005,
     ]
 }
 
@@ -260,6 +283,9 @@ def category_for_code(code: str) -> str:
     """先頭数字でカテゴリキーを返す（1=system, 2=device, ...）"""
     if not code or len(code) < 2 or code[0] != "E":
         return "unknown"
+    # E10001–E10009（E1000 系）はリモート（E1001 系システムコードと区別）
+    if len(code) >= 6 and code.startswith("E1000"):
+        return "remote"
     try:
         n = int(code[1])
     except ValueError:

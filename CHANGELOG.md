@@ -5,6 +5,19 @@ All notable changes to MFEPS will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.4.0] - 2026-04-02
+
+### Added
+- **Playwright E2E**: `tests/e2e/` — ログイン・ナビゲーション・主要ページの UI 回帰（`MFEPS_E2E_ADMIN_PASSWORD` / `MFEPS_STORAGE_SECRET` 対応）
+- **NIST CFTT (DI-RM-01〜07)**: `tests/cftt/` — モック I/O によるイメージング検証、`src/utils/cftt_report.py` でレポート JSON 生成
+- **リモートイメージング基盤 (Phase 10)**: `src/core/remote_protocol.py`、`src/services/remote_service.py`、`src/agent/` — JSON-RPC 2.0 プロトコルとエージェントスタブ
+- **DB マイグレーション 8**: `imaging_jobs.remote_agent_id`
+- **エラーコード E10001〜E10005**（リモート）、監査カテゴリ `REMOTE_*`
+- CI: `lint` → 並列 `unit-test`（`--cov-fail-under=79`、実測 ~79.8%）+ `e2e-test`、main push 時 `coverage-badge`
+
+### Changed
+- `APP_VERSION` **2.4.0**、`pytest.ini` に `e2e` / `asyncio` 設定、依存に `httpx` / `playwright` / `pytest-asyncio`
+
 ## [2.3.0] - 2026-04-02
 
 ### Added

@@ -4,6 +4,7 @@ MFEPS v2.1.0 — 認証サービス（bcrypt・ユーザー CRUD）
 from __future__ import annotations
 
 import logging
+import os
 import secrets
 import threading
 from datetime import datetime, timezone
@@ -99,7 +100,9 @@ def ensure_default_admin() -> None:
             if count > 0:
                 return
 
-            password = secrets.token_urlsafe(16)
+            password = os.environ.get("MFEPS_E2E_ADMIN_PASSWORD") or secrets.token_urlsafe(
+                16
+            )
             svc = AuthService()
             h = svc.hash_password(password)
             admin = User(

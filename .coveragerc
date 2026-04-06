@@ -1,4 +1,4 @@
-# MFEPS バックエンド coverage 設定（Phase 9: CI pytest-cov ゲート 75%）
+# MFEPS バックエンド coverage 設定（Phase 10: CI pytest-cov ゲート 80%）
 # WebUI / エントリポイントは別途 E2E 対象。バックエンド品質ゲート用に集計から除外。
 [run]
 source = src
@@ -8,6 +8,10 @@ omit =
     # 光学オプション: ネイティブ DLL / 実ドライブ依存が強く CI では未実行
     src/core/aacs_reader.py
     src/core/dvdcss_reader.py
+    # オプション pyewf / ctypes 経路（CI では未使用）
+    src/core/pyewf_writer.py
+    # Win32 生 I/O（単体テストでは imaging_engine をモックし CI では未実行）
+    src/core/win32_raw_io.py
 
 [report]
 exclude_lines =

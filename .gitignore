@@ -48,6 +48,9 @@ libs/**/*.lastcodeanalysissucceeded
 .coverage
 coverage.xml
 htmlcov/
+# pytest / CI で生成するローカル出力（リポジトリに含めない）
+test_output/
+test_e2e_output/
 
 # OS
 Thumbs.db

@@ -33,6 +33,12 @@ class MFEPSConfig(BaseSettings):
     # 出力
     mfeps_output_dir: str = Field(default="./output", description="出力先ディレクトリ")
 
+    # データベース（空なら data/mfeps.db）
+    mfeps_db_path: str = Field(
+        default="",
+        description="SQLite DB のパス（絶対または相対。空のとき data_dir/mfeps.db）",
+    )
+
     # イメージング
     mfeps_buffer_size: int = Field(default=1_048_576, description="バッファサイズ (bytes)")
 
@@ -159,6 +165,12 @@ class MFEPSConfig(BaseSettings):
 
     @property
     def db_path(self) -> Path:
+        raw = (self.mfeps_db_path or "").strip()
+        if raw:
+            p = Path(raw)
+            if not p.is_absolute():
+                p = (self.base_dir / p).resolve()
+            return p
         return self.data_dir / "mfeps.db"
 
     @property

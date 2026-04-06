@@ -40,6 +40,7 @@ from src.utils.folder_manager import ensure_project_structure
 from src.utils.logger import setup_logging, get_logger
 from src.models.database import init_database
 from src.services.auth_service import ensure_default_admin
+from src.services.remote_service import get_remote_service
 from src.ui.layout import create_layout
 from src.ui.pages.login import build_login_page
 from src.ui.pages.dashboard import build_dashboard
@@ -64,6 +65,9 @@ def is_admin() -> bool:
 
 def _get_or_create_storage_secret(data_dir: Path) -> str:
     """NiceGUI storage 署名用の秘密鍵（インスタンスごとに永続化）"""
+    env_secret = (os.environ.get("MFEPS_STORAGE_SECRET") or "").strip()
+    if env_secret:
+        return env_secret
     secret_file = data_dir / ".storage_secret"
     if secret_file.exists():
         return secret_file.read_text(encoding="utf-8").strip()
@@ -114,6 +118,7 @@ def main():
     init_database(config.db_path)
     logger.info(f"データベース初期化完了: {config.db_path}")
     ensure_default_admin()
+    get_remote_service()
 
     # 5. 管理者権限チェック
     admin = is_admin()

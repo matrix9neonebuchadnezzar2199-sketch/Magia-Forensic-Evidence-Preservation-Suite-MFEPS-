@@ -18,7 +18,7 @@ logger = logging.getLogger("mfeps.database")
 _engine = None
 _session_factory = None
 
-_SCHEMA_VERSION = 7  # Phase 8: users.is_active
+_SCHEMA_VERSION = 8  # Phase 10: imaging_jobs.remote_agent_id
 
 
 def _ensure_schema_version_table(engine: Engine) -> None:
@@ -169,6 +169,21 @@ def _migration_7_users_is_active(engine: Engine) -> None:
         conn.commit()
 
 
+def _migration_8_remote_agent_id(engine: Engine) -> None:
+    with engine.connect() as conn:
+        rows = conn.execute(text("PRAGMA table_info(imaging_jobs)")).fetchall()
+        col_names = {r[1] for r in rows}
+        if "remote_agent_id" not in col_names:
+            conn.execute(
+                text(
+                    "ALTER TABLE imaging_jobs ADD COLUMN remote_agent_id "
+                    "VARCHAR(100) DEFAULT NULL"
+                )
+            )
+            logger.info("マイグレーション: imaging_jobs.remote_agent_id を追加しました")
+        conn.commit()
+
+
 _MIGRATIONS: dict[int, Callable[[Engine], None]] = {
     1: _migration_1_imaging_write_block,
     2: _migration_2_audit_hash_timestamp,
@@ -177,6 +192,7 @@ _MIGRATIONS: dict[int, Callable[[Engine], None]] = {
     5: _migration_5_e01_columns,
     6: _migration_6_noop,
     7: _migration_7_users_is_active,
+    8: _migration_8_remote_agent_id,
 }
 
 

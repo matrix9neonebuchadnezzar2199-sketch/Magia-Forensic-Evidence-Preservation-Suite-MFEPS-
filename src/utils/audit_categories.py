@@ -19,3 +19,7 @@ class AuditCategories:
     E01_START = "e01_start"
     E01_COMPLETE = "e01_complete"
     E01_FAIL = "e01_fail"
+    REMOTE_REGISTER = "remote_register"
+    REMOTE_START = "remote_start"
+    REMOTE_COMPLETE = "remote_complete"
+    REMOTE_FAIL = "remote_fail"

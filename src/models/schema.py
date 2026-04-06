@@ -118,6 +118,8 @@ class ImagingJob(Base):
     e01_segment_count = Column(Integer, default=0)
     e01_log_path = Column(String(500), default="")
 
+    remote_agent_id = Column(String(100), nullable=True, default=None)
+
     evidence = relationship("EvidenceItem", back_populates="imaging_jobs")
     hash_records = relationship("HashRecord", back_populates="job", cascade="all, delete-orphan")
 
