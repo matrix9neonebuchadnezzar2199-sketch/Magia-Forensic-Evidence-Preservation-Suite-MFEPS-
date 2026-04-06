@@ -41,7 +41,7 @@ def _base_data(**overrides):
     return d
 
 
-@patch("src.services.report_service.get_config")
+@patch("src.utils.reports_paths.get_config")
 def test_html_report_optical_info(mock_cfg, tmp_path):
     from src.services.report_service import ReportService
 
@@ -67,7 +67,7 @@ def test_html_report_optical_info(mock_cfg, tmp_path):
     assert "dvd" in text
 
 
-@patch("src.services.report_service.get_config")
+@patch("src.utils.reports_paths.get_config")
 def test_html_report_e01_section(mock_cfg, tmp_path):
     from src.services.report_service import ReportService
 
@@ -88,7 +88,7 @@ def test_html_report_e01_section(mock_cfg, tmp_path):
     assert "EWF2" in text
 
 
-@patch("src.services.report_service.get_config")
+@patch("src.utils.reports_paths.get_config")
 def test_html_report_ewfinfo_section(mock_cfg, tmp_path):
     from src.services.report_service import ReportService
 
@@ -111,7 +111,7 @@ def test_html_report_ewfinfo_section(mock_cfg, tmp_path):
     assert "meta" in text
 
 
-@patch("src.services.report_service.get_config")
+@patch("src.utils.reports_paths.get_config")
 def test_html_report_rfc3161_section(mock_cfg, tmp_path):
     from src.services.report_service import ReportService
 
@@ -134,7 +134,7 @@ def test_html_report_rfc3161_section(mock_cfg, tmp_path):
     assert "取得済み" in text
 
 
-@patch("src.services.report_service.get_config")
+@patch("src.utils.reports_paths.get_config")
 def test_html_copy_guard_section(mock_cfg, tmp_path):
     from src.services.report_service import ReportService
 
@@ -155,7 +155,7 @@ def test_html_copy_guard_section(mock_cfg, tmp_path):
     assert "CSS" in text
 
 
-@patch("src.services.report_service.get_config")
+@patch("src.utils.reports_paths.get_config")
 def test_html_capacity_notes_row(mock_cfg, tmp_path):
     from src.services.report_service import ReportService
 
@@ -179,7 +179,7 @@ def test_html_capacity_notes_row(mock_cfg, tmp_path):
 def test_html_no_job_raises(tmp_path):
     from src.services.report_service import ReportService
 
-    with patch("src.services.report_service.get_config") as mock_cfg:
+    with patch("src.utils.reports_paths.get_config") as mock_cfg:
         mock_cfg.return_value = MagicMock(reports_dir=tmp_path / "r")
         svc = ReportService()
         with patch.object(svc, "_collect_report_data", return_value=None):
@@ -201,7 +201,7 @@ def test_pdf_raises_import_error_when_reportlab_missing(
 
     monkeypatch.setattr(builtins, "__import__", fake_import)
 
-    with patch("src.services.report_service.get_config") as mock_cfg:
+    with patch("src.utils.reports_paths.get_config") as mock_cfg:
         mock_cfg.return_value = MagicMock(reports_dir=tmp_path / "r")
         svc = ReportService()
         with patch.object(
@@ -213,7 +213,7 @@ def test_pdf_raises_import_error_when_reportlab_missing(
                 svc.generate_pdf("jid")
 
 
-@patch("src.services.report_service.get_config")
+@patch("src.utils.reports_paths.get_config")
 def test_generate_pdf_runs_full_pipeline(mock_cfg, tmp_path):
     """ReportLab PDF の主要分岐を一括で実行（カバレッジ用）"""
     from pathlib import Path
@@ -254,7 +254,7 @@ def test_generate_pdf_runs_full_pipeline(mock_cfg, tmp_path):
     assert path.endswith(".pdf")
 
 
-@patch("src.services.report_service.get_config")
+@patch("src.utils.reports_paths.get_config")
 def test_generate_pdf_mismatch_and_wb_none(mock_cfg, tmp_path):
     from pathlib import Path
 
@@ -277,7 +277,7 @@ def test_generate_pdf_mismatch_and_wb_none(mock_cfg, tmp_path):
     "wb",
     ("both", "hardware", "software", "none"),
 )
-@patch("src.services.report_service.get_config")
+@patch("src.utils.reports_paths.get_config")
 def test_generate_html_write_block_variants(mock_cfg, tmp_path, wb):
     from pathlib import Path
 
@@ -292,7 +292,7 @@ def test_generate_html_write_block_variants(mock_cfg, tmp_path, wb):
     assert "書き込み保護" in text
 
 
-@patch("src.services.report_service.get_config")
+@patch("src.utils.reports_paths.get_config")
 def test_generate_pdf_write_block_both(mock_cfg, tmp_path):
     from pathlib import Path
 

@@ -2,8 +2,12 @@
 MFEPS v2.1.0 — CoC (Chain of Custody) 管理画面
 """
 from nicegui import ui
+
+from src.models.database import session_scope
+from src.models.schema import EvidenceItem
 from src.services.coc_service import CoCService
 from src.services.case_service import CaseService, EvidenceService
+from src.utils.reports_paths import case_reports_dir
 
 
 def build_coc_page():
@@ -110,19 +114,51 @@ def build_coc_page():
 
             dialog.open()
 
+        def _resolve_case_for_export():
+            case_svc = CaseService()
+            cid = state.get("selected_case")
+            if not cid and state.get("selected_evidence"):
+                with session_scope() as session:
+                    ev = session.get(EvidenceItem, state["selected_evidence"])
+                    if ev:
+                        cid = ev.case_id
+            if not cid:
+                return None
+            return case_svc.get_case(cid)
+
         def export_json():
             if not state.get("selected_evidence"):
                 return ui.notify("証拠品を選択してください", type="warning")
+            case_row = _resolve_case_for_export()
+            if not case_row:
+                return ui.notify("案件を特定できません", type="warning")
             coc_svc = CoCService()
-            data = coc_svc.export(state["selected_evidence"], format="json")
-            ui.download(data.encode("utf-8"), filename=f"coc_export_{state['selected_evidence']}.json")
+            text = coc_svc.export(state["selected_evidence"], format="json")
+            out_dir = case_reports_dir(
+                case_row["case_name"], case_number=case_row["case_number"]
+            )
+            filename = f"coc_export_{state['selected_evidence']}.json"
+            out_path = out_dir / filename
+            out_path.write_text(text, encoding="utf-8")
+            ui.notify(f"保存しました: {out_path}", type="positive")
+            ui.download(out_path.read_bytes(), filename=filename)
 
         def export_csv():
             if not state.get("selected_evidence"):
                 return ui.notify("証拠品を選択してください", type="warning")
+            case_row = _resolve_case_for_export()
+            if not case_row:
+                return ui.notify("案件を特定できません", type="warning")
             coc_svc = CoCService()
-            data = coc_svc.export(state["selected_evidence"], format="csv")
-            ui.download(data.encode("utf-8"), filename=f"coc_export_{state['selected_evidence']}.csv")
+            text = coc_svc.export(state["selected_evidence"], format="csv")
+            out_dir = case_reports_dir(
+                case_row["case_name"], case_number=case_row["case_number"]
+            )
+            filename = f"coc_export_{state['selected_evidence']}.csv"
+            out_path = out_dir / filename
+            out_path.write_text(text, encoding="utf-8")
+            ui.notify(f"保存しました: {out_path}", type="positive")
+            ui.download(out_path.read_bytes(), filename=filename)
 
         ui.button("➕ CoC エントリ追加", on_click=add_entry_dialog, color="primary").props("unelevated")
         ui.button("📥 JSON エクスポート", on_click=export_json).props("outline")

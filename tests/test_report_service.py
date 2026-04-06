@@ -72,7 +72,7 @@ class TestReportDataCollection:
 
 
 class TestHTMLReport:
-    @patch("src.services.report_service.get_config")
+    @patch("src.utils.reports_paths.get_config")
     def test_generate_html(self, mock_get_config, populated_db):
         from src.services.report_service import ReportService
 

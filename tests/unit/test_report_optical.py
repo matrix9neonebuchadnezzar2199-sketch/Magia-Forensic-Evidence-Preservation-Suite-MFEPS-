@@ -61,7 +61,7 @@ class TestReportOpticalSections:
         assert data.get("copy_guard_type") == "css"
 
     @patch("src.services.report_service.get_imaging_service")
-    @patch("src.services.report_service.get_config")
+    @patch("src.utils.reports_paths.get_config")
     def test_html_contains_optical_section(
         self, mock_cfg, mock_gis, optical_job_db, tmp_path
     ):

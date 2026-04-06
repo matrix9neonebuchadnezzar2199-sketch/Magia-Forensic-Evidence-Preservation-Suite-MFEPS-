@@ -12,8 +12,8 @@ from typing import Optional
 from src.models.database import session_scope
 from src.models.schema import ImagingJob, HashRecord, Case, EvidenceItem
 from src.services.imaging_service import get_imaging_service
-from src.utils.config import get_config
 from src.utils.constants import APP_VERSION
+from src.utils.reports_paths import case_reports_dir
 
 logger = logging.getLogger("mfeps.report_service")
 
@@ -74,9 +74,9 @@ class ReportService:
         if not data:
             raise ValueError(f"ジョブが見つかりません: {job_id}")
 
-        config = get_config()
-        output_dir = config.reports_dir
-        output_dir.mkdir(parents=True, exist_ok=True)
+        output_dir = case_reports_dir(
+            data["case_name"], case_number=data["case_number"]
+        )
 
         filename = f"{data['case_number']}_{data['evidence_number']}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf"
         output_path = output_dir / filename
@@ -384,9 +384,9 @@ class ReportService:
         if not data:
             raise ValueError(f"ジョブが見つかりません: {job_id}")
 
-        config = get_config()
-        output_dir = config.reports_dir
-        output_dir.mkdir(parents=True, exist_ok=True)
+        output_dir = case_reports_dir(
+            data["case_name"], case_number=data["case_number"]
+        )
 
         filename = f"{data['case_number']}_{data['evidence_number']}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.html"
         output_path = output_dir / filename

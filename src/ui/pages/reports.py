@@ -2,8 +2,44 @@
 MFEPS v2.1.0 — レポート画面
 報告書一覧 + 生成
 """
+from pathlib import Path
+
 from nicegui import ui
+
 from src.utils.config import get_config
+
+
+def _collect_report_files(reports_dir: Path) -> list[dict]:
+    """reports 直下および案件サブフォルダ内の PDF/HTML/JSON/CSV を列挙。"""
+    rows: list[dict] = []
+    if not reports_dir.exists():
+        return rows
+    exts = {".pdf", ".html", ".json", ".csv"}
+    for sub in sorted(reports_dir.iterdir(), reverse=True):
+        if sub.is_dir():
+            for f in sorted(sub.iterdir(), reverse=True):
+                if f.is_file() and f.suffix.lower() in exts:
+                    size_kb = f.stat().st_size / 1024
+                    rows.append(
+                        {
+                            "name": f"{sub.name} / {f.name}",
+                            "type": f.suffix.upper(),
+                            "size": f"{size_kb:.1f} KB",
+                            "path": str(f),
+                        }
+                    )
+        elif sub.is_file() and sub.suffix.lower() in {".pdf", ".html"}:
+            size_kb = sub.stat().st_size / 1024
+            rows.append(
+                {
+                    "name": sub.name,
+                    "type": sub.suffix.upper(),
+                    "size": f"{size_kb:.1f} KB",
+                    "path": str(sub),
+                }
+            )
+    rows.sort(key=lambda r: r["path"], reverse=True)
+    return rows
 
 
 def build_reports_page():
@@ -17,17 +53,7 @@ def build_reports_page():
         config = get_config()
         reports_dir = config.reports_dir
 
-        files = []
-        if reports_dir.exists():
-            for f in sorted(reports_dir.iterdir(), reverse=True):
-                if f.suffix in (".pdf", ".html"):
-                    size_kb = f.stat().st_size / 1024
-                    files.append({
-                        "name": f.name,
-                        "type": f.suffix.upper(),
-                        "size": f"{size_kb:.1f} KB",
-                        "path": str(f),
-                    })
+        files = _collect_report_files(reports_dir)
 
         if files:
             columns = [
@@ -35,7 +61,7 @@ def build_reports_page():
                 {"name": "type", "label": "形式", "field": "type", "align": "center"},
                 {"name": "size", "label": "サイズ", "field": "size", "align": "right"},
             ]
-            ui.table(columns=columns, rows=files, row_key="name").classes(
+            ui.table(columns=columns, rows=files, row_key="path").classes(
                 "full-width").props("flat bordered")
         else:
             ui.label("レポートがありません").classes("text-caption text-grey-6")
